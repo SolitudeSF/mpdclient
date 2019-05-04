@@ -945,6 +945,7 @@ iterator countGrouped*(mpd: MPDClient, filter: Filter, group: Tag): CountGroup =
       if res.songs > 0:
         yield res
       res = CountGroup(tag: group, name: val)
+  yield res
 
 proc getFingerprint*(mpd: MPDClient, uri: string): string =
   mpd.runCommand "getfingerprint", uri
@@ -1087,6 +1088,7 @@ iterator listGrouped*(mpd: MPDClient, tag: Tag, filter: Filter, group: Tag): (st
       res = (val, @[])
     else:
       res[1].add val
+  yield res
 
 proc listAll*(mpd: MPDClient, uri: string): seq[(InfoEntryKind, string)] =
   ## Do not use this
@@ -1139,6 +1141,7 @@ template infoIterRoutine(mpd: MPDClient): untyped =
       res.tags = initTable[string, string](4)
     else:
       res.tags.add key, val
+  yield res
 
 proc listFiles*(mpd: MPDClient, uri: string): seq[InfoEntry] =
   mpd.runCommand "listfiles", uri
