@@ -1,5 +1,5 @@
-import os, net, strutils, times, tables, options, macros, sequtils
-export options.get, options.isSome, tables.`[]`
+import os, net, strutils, times, strtabs, options, macros, sequtils
+export options.get, options.isSome, strtabs.`[]`
 
 # times.nim bug 9901
 {.warning[ProveInit]: off.}
@@ -47,7 +47,7 @@ type
     lastModification*: DateTime
     duration*: Duration
     range*: TimeRange
-    tags*: Table[string, string]
+    tags*: StringTableRef
 
   Stats* = object
     artists*, albums*, songs*: uint32
@@ -118,7 +118,7 @@ type
   InfoEntry = object
     kind*: InfoEntryKind
     name*: string
-    tags*: Table[string, string]
+    tags*: StringTableRef
 
   PosId = tuple[position, id: uint32]
 
@@ -144,7 +144,7 @@ type
 
   Partition* = object
     name*: string
-    tags*: Table[string, string]
+    tags*: StringTableRef
 
   Output* = object
     id*: uint32
@@ -431,7 +431,7 @@ proc getStats(mpd: MPDClient): Stats =
       raise newException(CatchableError, "Unknown struct key: " & key)
 
 proc getSong(source: MPDClient | seq[Pair]): Song =
-  result.tags = initTable[string, string](16)
+  result.tags = newStringTable()
   for (key, value) in source:
     case key
     of "file":
@@ -464,7 +464,7 @@ proc getSong(source: MPDClient | seq[Pair]): Song =
       else:
         result.place = some(QueuePlace(priority: value.parseInt.uint8))
     else:
-      result.tags.add key, value
+      result.tags[key] = value
 
 proc getPlaylist(source: MPDClient | seq[Pair]): Playlist =
   for (key, value) in source:
@@ -525,13 +525,13 @@ proc getFileSticker(source: MPDClient | seq[Pair]): FileSticker =
       raise newException(CatchableError, "Unknown key: " & key)
 
 proc getPartition(source: MPDClient | seq[Pair]): Partition =
-  result.tags = initTable[string, string](4)
+  result.tags = newStringTable()
   for (key, value) in source:
     case key:
     of "partition":
       result.name = value
     else:
-      result.tags.add key, value
+      result.tags[key] = value
 
 proc getOutput(source: MPDClient | seq[Pair]): Output =
   for (key, value) in source:
@@ -1112,7 +1112,7 @@ template infoRoutine(mpd: MPDClient): untyped =
     of "directory": result.add InfoEntry(kind: entryDirectory, name: val)
     of "file": result.add InfoEntry(kind: entryFile, name: val)
     of "playlist": result.add InfoEntry(kind: entryPlaylist, name: val)
-    else: result[^1].tags.add key, val
+    else: result[^1].tags[key] = val
 
 template infoIterRoutine(mpd: MPDClient): untyped =
   var res: InfoEntry
@@ -1123,19 +1123,19 @@ template infoIterRoutine(mpd: MPDClient): untyped =
       if res.name.len > 0: yield res
       res.kind = entryDirectory
       res.name = val
-      res.tags = initTable[string, string](4)
+      res.tags = newStringTable()
     of "file":
       if res.name.len > 0: yield res
       res.kind = entryFile
       res.name = val
-      res.tags = initTable[string, string](4)
+      res.tags = newStringTable()
     of "Playlist":
       if res.name.len > 0: yield res
       res.kind = entryPlaylist
       res.name = val
-      res.tags = initTable[string, string](4)
+      res.tags = newStringTable()
     else:
-      res.tags.add key, val
+      res.tags[key] = val
   yield res
 
 proc listFiles*(mpd: MPDClient, uri: string): seq[InfoEntry] =
