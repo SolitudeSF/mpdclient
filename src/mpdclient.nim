@@ -251,13 +251,10 @@ macro parseEnum(s: string, t: typed): untyped =
       case c.kind
       of nnkEnumFieldDef: (c[1], c[0])
       else: (newCall(ident"$", c), c)
-    result = result.add newNimNode(nnkOfBranch).add(v, e)
-  result = result.add newNimNode(nnkElse).add(
-    newNimNode(nnkRaiseStmt).add(
-      newCall(ident"newException", ident"CatchableError",
-              newCall(ident"&", newStrLitNode"Couldn't parse ",
-                      newCall(ident"&", newCall(ident"$", t),
-                              newCall(ident"&", newStrLitNode": ", s))))))
+    result.add newNimNode(nnkOfBranch).add(v, e)
+
+  result.add newNimNode(nnkElse).add(quote do:
+    raise newException(CatchableError, "Couldn't parse " & $`t` & ": " & $`s`))
 
 func parseSubsystem(s: string): SubsystemKind = s.parseEnum SubsystemKind
 func parseState(s: string): State = s.parseEnum State
