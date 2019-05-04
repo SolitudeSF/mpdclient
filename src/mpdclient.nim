@@ -314,8 +314,10 @@ proc getValue(mpd: MPDClient): string =
   mpd.expectOk
 
 iterator items(mpd: MPDClient): Pair =
+  var line = ""
   while true:
-    let reply = mpd.readLine.parseReply
+    mpd.socket.readLine(line)
+    let reply = line.parseReply
     case reply.kind
     of replyPair:
       yield (reply.key, reply.value)
@@ -607,18 +609,14 @@ func sortBy*(tag: Tag, descending = false): SortOrder =
 ## Execution
 
 proc runCommand(mpd: MPDClient; cmd: string, args: varargs[string]) =
-  mpd.socket.send cmd
+  var command = cmd
   for arg in args:
-    mpd.socket.send " "
-    mpd.socket.send arg.escape
-  mpd.socket.send "\x0a"
+    command &= " "
+    command &= arg.escape
+  mpd.socket.send command & "\x0a"
 
-proc runCommandOk(mpd: MPDClient; cmd: string, args: varargs[string]) =
-  mpd.socket.send cmd
-  for arg in args:
-    mpd.socket.send " "
-    mpd.socket.send arg.escape
-  mpd.socket.send "\x0a"
+template runCommandOk(mpd: MPDClient; cmd: string, args: varargs[string]): untyped =
+  mpd.runCommand(cmd, args)
   mpd.expectOk
 
 ## Commands:
