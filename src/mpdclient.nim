@@ -168,7 +168,7 @@ proc `$`*(a: AudioFormat): string = $a.rate & ":" & $a.bits & ":" & $a.channels
 
 template readLine(mpd: MPDClient): string = mpd.socket.recvLine
 
-## Connection
+# Connection
 
 proc connect*(mpd: MPDClient) =
   if mpd.host.startsWith '/':
@@ -210,7 +210,7 @@ proc newMPDClient*(host: string, port = 6600'u16, password = "", connect = true)
   result = MPDClient(host: host, port: port.Port, password: password, socket: newSocket())
   if connect: result.connect
 
-## Argument conversion
+# Argument conversion
 
 func toArg(arg: string): string {.inline.} = arg
 
@@ -242,7 +242,7 @@ func toArg(arg: Partition | Playlist): string {.inline.} = arg.name
 
 func toArg[T](arg: T): string {.inline.} = $arg
 
-## Parsing strings
+# Parsing strings
 
 macro parseEnum(s: string, t: typed): untyped =
   result = newNimNode(nnkCaseStmt).add(s)
@@ -283,7 +283,7 @@ func parseAudioFormat(s: string): AudioFormat =
   result.bits = splits[1].parseInt.uint8
   result.channels = splits[2].parseInt.uint8
 
-## Parsing response
+# Parsing response
 
 proc parseReply(s: string): Reply =
   if s == "OK" or s == "list_OK":
@@ -577,7 +577,7 @@ proc getMessage(source: MPDClient | seq[Pair]): Message =
     else:
       raise newException(CatchableError, "Unknown key: " & key)
 
-## Filters
+# Filters
 
 proc `&=`(a: var Filter, b: Filter) {.borrow.}
 proc `&`(a, b: Filter): Filter {.borrow.}
@@ -601,12 +601,12 @@ func `and`*(e: varargs[Filter]): Filter =
       result &= e[i]
     result &= Filter ")"
 
-## Sorting
+# Sorting
 
 func sortBy*(tag: Tag, descending = false): SortOrder =
   SortOrder(tag: tag, descending: descending)
 
-## Execution
+# Execution
 
 proc runCommand(mpd: MPDClient; cmd: string, args: varargs[string]) =
   var command = cmd
@@ -619,9 +619,9 @@ template runCommandOk(mpd: MPDClient; cmd: string, args: varargs[string]): untyp
   mpd.runCommand(cmd, args)
   mpd.expectOk
 
-## Commands:
+# Commands:
 
-## Querying MPD status
+# Querying MPD status
 
 proc clearError*(mpd: MPDClient) =
   mpd.runCommandOk "clearerror"
@@ -648,7 +648,7 @@ proc stats*(mpd: MPDClient): Stats =
   mpd.runCommand "stats"
   mpd.getStats
 
-## Playback options
+# Playback options
 
 proc consume*(mpd: MPDClient; val: bool) =
   mpd.runCommandOk "consume", val.toArg
@@ -680,7 +680,7 @@ proc replayGainStatus*(mpd: MPDClient): ReplayGainMode =
   mpd.runCommand "replay_gain_status"
   mpd.getValue.parseReplayGainMode
 
-## Controlling playback
+# Controlling playback
 
 proc next*(mpd: MPDClient) =
   mpd.runCommandOk "next"
@@ -717,7 +717,7 @@ proc seekCur*(mpd: MPDClient; dur: Duration | float) =
 
 template seek*(mpd, dur) = mpd.seekcur dur
 
-## The Queue
+# The Queue
 
 proc add*(mpd: MPDClient; uri: string) =
   mpd.runCommandOk "add", uri
@@ -858,7 +858,7 @@ proc cleartagid*(mpd: MPDClient, id: uint32, tag: string) =
 proc cleartagid*(mpd: MPDClient, id: uint32) =
   mpd.runCommandOk "cleartagid", id.toArg
 
-## Stored playlists
+# Stored playlists
 
 proc listPlaylist*(mpd: MPDClient, name: string): seq[Song] =
   mpd.runCommand "listplaylist", name
@@ -911,7 +911,7 @@ proc rm*(mpd: MPDClient, playlist: string | Playlist) =
 proc save*(mpd: MPDClient, playlist: string | Playlist) =
   mpd.runCommandOk "save", playlist.toArg
 
-## The music database
+# The music database
 
 proc albumart*(mpd: MPDClient, uri: string, offset = 0): AlbumArt =
   mpd.runCommand "albumart", uri, offset.toArg
@@ -1179,7 +1179,7 @@ proc rescan*(mpd: MPDClient, uri: string): uint32 =
   mpd.getValue.parseUint32
 
 
-## Mounts and neighbors
+# Mounts and neighbors
 
 proc mount*(mpd: MPDClient, path, uri: string) =
   mpd.runCommandOk "mount", path, uri
@@ -1203,7 +1203,7 @@ iterator listNeighbors*(mpd: MPDClient): Neighbor =
   mpd.runCommand "listneighbors"
   mpd.iterateStructList "neighbor", getMount
 
-## Stickers
+# Stickers
 
 proc stickerGet*(mpd: MPDClient, uri, name: string): Sticker =
   mpd.runCommand "sticker get song", uri, name
@@ -1242,7 +1242,7 @@ iterator stickerFindWithValue*(mpd: MPDClient, uri, name, value: string, operato
   mpd.runCommand "sticker find song", uri, name, operator.toArg, value
   mpd.iterateStructList "file", getFileSticker
 
-## Connection settings
+# Connection settings
 
 proc ping*(mpd: MPDClient) =
   mpd.runCommandOk "ping"
@@ -1270,7 +1270,7 @@ proc tagtypesClear*(mpd: MPDClient) =
 proc tagtypesAll*(mpd: MPDClient) =
   mpd.runCommandOk "tagtypes all"
 
-## Partition commands
+# Partition commands
 
 proc partition*(mpd: MPDClient, part: string | Partition) =
   mpd.runCommandOk "partition", part.toArg
@@ -1286,7 +1286,7 @@ iterator listPartitions*(mpd: MPDClient): Partition =
 proc newPartition*(mpd: MPDClient, name: string) =
   mpd.runCommandOk "newpartition", name
 
-## Audio output devices
+# Audio output devices
 
 proc disableOutput*(mpd: MPDClient, output: uint32 | Output) =
   mpd.runCommand "disableoutput", output.toArg
@@ -1320,7 +1320,7 @@ template switch*(mpd: MPDClient, output: Output, state: bool) =
   else:
     mpd.disableOutput output
 
-## Reflection
+# Reflection
 
 proc config*(mpd: MPDClient): Config =
   mpd.runCommand "config"
@@ -1358,7 +1358,7 @@ iterator decoders*(mpd: MPDClient): Decoder =
   mpd.runCommand "decoders"
   mpd.iterateStructList "plugin", getDecoder
 
-## Client to client
+# Client to client
 
 proc subscribe*(mpd: MPDClient; channel: string) =
   mpd.runCommandOk "subscribe", channel
