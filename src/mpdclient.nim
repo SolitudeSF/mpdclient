@@ -1106,18 +1106,19 @@ iterator listAll*(mpd: MPDClient, uri: string): (InfoEntryKind, string) =
     else: discard
 
 template infoRoutine(mpd: MPDClient): untyped =
-  for pair in mpd:
-    let (key, val) = pair
+  for (key, val) in mpd:
     case key:
-    of "directory": result.add InfoEntry(kind: entryDirectory, name: val)
-    of "file": result.add InfoEntry(kind: entryFile, name: val)
-    of "playlist": result.add InfoEntry(kind: entryPlaylist, name: val)
+    of "directory":
+      result.add InfoEntry(kind: entryDirectory, name: val, tags: newStringTable())
+    of "file":
+      result.add InfoEntry(kind: entryFile, name: val, tags: newStringTable())
+    of "playlist":
+      result.add InfoEntry(kind: entryPlaylist, name: val, tags: newStringTable())
     else: result[^1].tags[key] = val
 
 template infoIterRoutine(mpd: MPDClient): untyped =
   var res: InfoEntry
-  for pair in mpd:
-    let (key, val) = pair
+  for (key, val) in mpd:
     case key:
     of "directory":
       if res.name.len > 0: yield res
