@@ -1,5 +1,6 @@
 import os, net, strutils, times, strtabs, options, macros, sequtils
-export options.get, options.isSome, strtabs.`[]`
+export options.get, options.isSome
+export strtabs.`[]`, strtabs.`$`, strtabs.getOrDefault, strtabs.contains
 
 # times.nim bug 9901
 {.warning[ProveInit]: off.}
