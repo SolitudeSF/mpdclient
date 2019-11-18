@@ -1,4 +1,5 @@
 import os, net, strutils, times, strtabs, options, macros, sequtils
+from posix import Stat, stat, S_ISSOCK
 export options.get, options.isSome
 export strtabs.`[]`, strtabs.`$`, strtabs.getOrDefault, strtabs.contains
 
@@ -171,17 +172,22 @@ template readLine(mpd: MPDClient): string = mpd.socket.recvLine
 
 # Connection
 
-proc connect*(mpd: MPDClient) =
+proc connect(mpd: var MPDClient) =
   if mpd.host.startsWith '/':
+    mpd.socket = newSocket(AF_UNIX)
     mpd.socket.connectUnix mpd.host
   else:
+    mpd.socket = newSocket()
     mpd.socket.connect mpd.host, mpd.port
 
   if not mpd.readLine.startsWith "OK MPD ":
     raise newException(CatchableError, "Error while connecting")
 
-proc newMPDClient*(connect = true): MPDClient =
-  result.socket = newSocket()
+proc existsSocket(s: string): bool =
+  var res: Stat
+  return stat(s, res) >= 0 and S_ISSOCK(res.st_mode)
+
+proc newMPDClient*(): MPDClient =
   result.host = "127.0.0.1"
   result.port = block:
     let port = getEnv "MPD_PORT"
@@ -202,14 +208,14 @@ proc newMPDClient*(connect = true): MPDClient =
     let
       xdgRuntimeDir = getEnv("XDG_RUNTIME_DIR", "/run")
       socket = xdgRuntimeDir / "mpd" / "socket"
-    if existsFile socket:
+    if existsSocket socket:
       result.host = socket
 
-  if connect: result.connect
+  result.connect
 
-proc newMPDClient*(host: string, port = 6600'u16, password = "", connect = true): MPDClient =
-  result = MPDClient(host: host, port: port.Port, password: password, socket: newSocket())
-  if connect: result.connect
+proc newMPDClient*(host: string, port = 6600'u16, password = ""): MPDClient =
+  result = MPDClient(host: host, port: port.Port, password: password)
+  result.connect
 
 # Argument conversion
 
@@ -395,15 +401,15 @@ proc getStatus(mpd: MPDClient): Status =
       else:
         result.song = some(QueuePlace(id: value.parseUint32))
     of "nextsong":
-      if result.nextsong.isSome:
+      if result.nextSong.isSome:
         result.nextSong.get.pos = value.parseUint32
       else:
-        result.nextsong = some(QueuePlace(pos: value.parseUint32))
+        result.nextSong = some(QueuePlace(pos: value.parseUint32))
     of "nextsongid":
-      if result.nextsong.isSome:
+      if result.nextSong.isSome:
         result.nextSong.get.id = value.parseUint32
       else:
-        result.nextsong = some(QueuePlace(id: value.parseUint32))
+        result.nextSong = some(QueuePlace(id: value.parseUint32))
     of "updating_db":
       result.updatingDb = value.parseUint32.some
     of "error":
@@ -666,7 +672,7 @@ proc single*(mpd: MPDClient; val: bool) =
 proc setVol*(mpd: MPDClient; val: range[0..100]) =
   mpd.runCommandOk "setvol", val.toArg
 
-template volume*(mpd, val) = mpd.setvol val
+template volume*(mpd, val) = mpd.setVol val
 
 proc mixRampDb*(mpd: MPDClient; val: float32) =
   mpd.runCommandOk "mixrampdb", val.toArg
@@ -716,7 +722,7 @@ proc seekId*(mpd: MPDClient; id: uint32, dur: Duration | float) =
 proc seekCur*(mpd: MPDClient; dur: Duration | float) =
   mpd.runCommandOk "seekcur", dur.toArg
 
-template seek*(mpd, dur) = mpd.seekcur dur
+template seek*(mpd, dur) = mpd.seekCur dur
 
 # The Queue
 
