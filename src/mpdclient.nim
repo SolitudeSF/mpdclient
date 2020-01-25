@@ -622,7 +622,7 @@ proc runCommand(mpd: MPDClient; cmd: string, args: varargs[string]) =
     command &= arg.escape
   mpd.socket.send command & "\x0a"
 
-template runCommandOk(mpd: MPDClient; cmd: string, args: varargs[string]): untyped =
+proc runCommandOk(mpd: MPDClient; cmd: string, args: varargs[string]) {.inline.} =
   mpd.runCommand(cmd, args)
   mpd.expectOk
 
