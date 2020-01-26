@@ -301,12 +301,12 @@ proc parseReply(s: string): Reply =
     let splits = s.split(':', maxsplit = 1)
     Reply(kind: replyPair, key: splits[0], value: splits[1].strip)
 
-proc expectOk(mpd: MPDClient) =
+proc expectOk(mpd: MPDClient) {.inline.} =
   let reply = mpd.readLine.parseReply
   if reply.kind == replyAck:
     raise newException(CatchableError, reply.ack)
 
-proc expectPair(mpd: MPDClient): bool =
+proc expectList(mpd: MPDClient): bool {.inline.} =
   let reply = mpd.readLine.parseReply
   if reply.kind == replyAck:
     raise newException(CatchableError, reply.ack)
@@ -632,9 +632,9 @@ proc runCommandOk(mpd: MPDClient; cmd: string, args: varargs[string]) {.inline.}
   mpd.runCommand(cmd, args)
   mpd.expectOk
 
-proc runCommandPair(mpd: MPDClient; cmd: string, args: varargs[string]): bool {.inline.} =
+proc runCommandList(mpd: MPDClient; cmd: string, args: varargs[string]): bool {.inline.} =
   mpd.runCommand(cmd, args)
-  mpd.expectPair
+  mpd.expectList
 
 # Commands:
 
@@ -763,11 +763,11 @@ proc moveId*(mpd: MPDClient; id, to: uint32) =
   mpd.runCommandOk "moveid", id.toArg, to.toArg
 
 proc playlistFind*(mpd: MPDClient, tag: Tag, needle: string): seq[Song] =
-  if mpd.runCommandPair("playlistfind", tag.toArg, needle):
+  if mpd.runCommandList("playlistfind", tag.toArg, needle):
     mpd.getStructList "file", getSong
 
 iterator playlistFind*(mpd: MPDClient, tag: Tag, needle: string): Song =
-  if mpd.runCommandPair("playlistfind", tag.toArg, needle):
+  if mpd.runCommandList("playlistfind", tag.toArg, needle):
     mpd.iterateStructList "file", getSong
 
 proc playlistId*(mpd: MPDClient): seq[Song] =
@@ -803,11 +803,11 @@ iterator playlistInfo*(mpd: MPDClient; range: SongRange): Song =
   mpd.iterateStructList "file", getSong
 
 proc playlistSearch*(mpd: MPDClient, tag: Tag, needle: string): seq[Song] =
-  if mpd.runCommandPair("playlistsearch", tag.toArg, needle):
+  if mpd.runCommandList("playlistsearch", tag.toArg, needle):
     mpd.getStructList "file", getSong
 
 iterator playlistSearch*(mpd: MPDClient, tag: Tag, needle: string): Song =
-  if mpd.runCommandPair("playlistsearch", tag.toArg, needle):
+  if mpd.runCommandList("playlistsearch", tag.toArg, needle):
     mpd.iterateStructList "file", getSong
 
 proc playlistChanges*(mpd: MPDClient, version: string, range: SongRange): seq[Song] =
