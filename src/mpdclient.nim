@@ -59,9 +59,17 @@ type
   ReplayGainMode* = enum
     gainOff = "off", gainTrack = "track", gainAlbum = "album", gainAuto = "auto"
 
+  BitDepthKind* = enum
+    bdFixed, bdFloating
+
+  BitDepth* = object
+    kind*: BitDepthKind
+    bits*: uint8
+
   AudioFormat* = object
     rate*: uint32
-    bits*, channels*: uint8
+    bitDepth*: BitDepth
+    channels*: uint8
 
   Status* = object
     volume*: int8
@@ -166,7 +174,14 @@ type
 const
   noSort* = SortOrder(tag: tagAny)
 
-proc `$`*(a: AudioFormat): string = $a.rate & ":" & $a.bits & ":" & $a.channels
+proc `$`*(b: BitDepth): string =
+  case b.kind
+  of bdFixed:
+    $b.bits
+  of bdFloating:
+    "f"
+
+proc `$`*(a: AudioFormat): string = $a.rate & ":" & $a.bitDepth & ":" & $a.channels
 
 template readLine(mpd: MPDClient): string = mpd.socket.recvLine
 
@@ -239,7 +254,7 @@ func toArg(arg: Output): string {.inline.} = $arg.id
 
 func toArg(arg: AudioFormat): string {.inline.} =
   (if arg.rate == 0: "*" else: $arg.rate) & ":" &
-  (if arg.bits == 0: "*" else: $arg.bits) & ":" &
+  (if arg.bitDepth.bits == 0: "*" else: $arg.bitDepth) & ":" &
   (if arg.channels == 0: "*" else: $arg.channels)
 
 func toArg(arg: SortOrder): string {.inline.} =
@@ -284,10 +299,16 @@ func parseTime(s: string): (Duration, Duration) =
   let splits = s.split(':', maxsplit = 1)
   (splits[0].parseFloatSeconds, splits[1].parseFloatSeconds)
 
+func parseBitDepth(s: string): BitDepth =
+  if s == "f":
+    BitDepth(kind: bdFloating, bits: 32)
+  else:
+    BitDepth(kind: bdFixed, bits: s.parseInt.uint8)
+
 func parseAudioFormat(s: string): AudioFormat =
   let splits = s.split(':', maxsplit = 2)
   result.rate = splits[0].parseUint32
-  result.bits = splits[1].parseInt.uint8
+  result.bitDepth = splits[1].parseBitDepth
   result.channels = splits[2].parseInt.uint8
 
 # Parsing response

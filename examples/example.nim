@@ -24,7 +24,7 @@ if status.state in {statePlay, statePause}:
 
 let audioFormat = status.audio
 echo "sampleRate: ", audioFormat.rate
-echo "bits: ", audioFormat.bits
+echo "bitDepth: ", audioFormat.bitDepth
 echo "channels: ", audioFormat.channels
 
 let song = mpd.currentSong
