@@ -7,7 +7,7 @@ export strtabs.`[]`, strtabs.`$`, strtabs.getOrDefault, strtabs.contains
 {.warning[ProveInit]: off.}
 
 type
-  MPDClient* = object
+  MPDClient* = ref object
     host: string
     port: Port
     password: string
@@ -72,6 +72,7 @@ type
     channels*: uint8
 
   Status* = object
+    partition*: string
     volume*: int8
     repeat*, random*, single*, consume*: bool
     queueVersion*, queueLen*, bitrate*: uint32
@@ -100,6 +101,9 @@ type
     tagOriginalDate = "OriginalDate"
     tagComposer = "Composer"
     tagPerformer = "Performer"
+    tagConductor = "Conductor"
+    tagWork = "Work"
+    tagGrouping = "Grouping"
     tagDisc = "Disc"
     tagLabel = "Label"
     tagMUSICBRAINZ_ARTISTID = "MUSICBRAINZ_ARTISTID"
@@ -135,10 +139,6 @@ type
   Sticker = tuple[name, value: string]
 
   FileSticker = tuple[uri: string, sticker: Sticker]
-
-  AlbumArt = object
-    size*, binary*: int
-    data*: string
 
   Directory* = object
     name*: string
@@ -203,7 +203,7 @@ proc existsSocket(s: string): bool =
   return stat(s, res) >= 0 and S_ISSOCK(res.st_mode)
 
 proc newMPDClient*(): MPDClient =
-  result.host = "127.0.0.1"
+  result = MPDClient(host: "127.0.0.1")
   result.port = block:
     let port = getEnv "MPD_PORT"
     if port.len > 0:
@@ -347,6 +347,14 @@ proc getValue(mpd: MPDClient): string =
   result = mpd.getPair.value
   mpd.expectOk
 
+proc getBinary(mpd: MPDClient): seq[byte] =
+  let pair = mpd.getPair
+  assert pair.key == "binary"
+  let size = pair.value.parseUint32.int
+  result.newSeq size
+  let read = mpd.socket.recv(addr result[0], size)
+  assert read == size
+
 iterator items(mpd: MPDClient): Pair =
   var line = ""
   while true:
@@ -389,6 +397,8 @@ template iterateValues(mpd: MPDClient): untyped =
 proc getStatus(mpd: MPDClient): Status =
   for (key, value) in mpd:
     case key
+    of "partition":
+      result.partition = value
     of "volume":
       result.volume = value.parseInt.int8
     of "repeat":
@@ -509,12 +519,6 @@ proc getPlaylist(source: MPDClient | seq[Pair]): Playlist =
       result.lastModification = value.parse("yyyy-MM-dd'T'HH:mm:ss'Z'")
     else:
       raise newException(CatchableError, "Unknown key: " & key)
-
-proc getAlbumArt(mpd: MPDClient): AlbumArt =
-  result.size = mpd.getPair[1].parseInt
-  result.binary = mpd.getPair[1].parseInt
-  result.data = mpd.readLine
-  mpd.expectOk
 
 proc getPosId(source: MPDClient | seq[Pair]): PosId =
   for (key, value) in source:
@@ -951,9 +955,11 @@ proc save*(mpd: MPDClient, playlist: string | Playlist) =
 
 # The music database
 
-proc albumart*(mpd: MPDClient, uri: string, offset = 0): AlbumArt =
+proc albumart*(mpd: MPDClient, uri: string, offset = 0): tuple[size: uint32, data: seq[byte]] =
   mpd.runCommand "albumart", uri, offset.toArg
-  mpd.getAlbumArt
+  result.size = mpd.getValue.parseUint32
+  result.data = mpd.getBinary
+  mpd.expectOk
 
 proc count*(mpd: MPDClient, filter: Filter): tuple[songs, playtime: int] =
   mpd.runCommand "count", filter.toArg
@@ -1008,7 +1014,6 @@ proc findAdd*(mpd: MPDClient, filter: Filter, sort = noSort) =
 proc findAdd*(mpd: MPDClient, filter: Filter, sort = noSort, window: SongRange) =
   ## Requires MPD >= 0.22
   findCompose "findadd", filter, sort, window
-  echo filter.string.escape
   mpd.expectOk
 
 proc searchAdd*(mpd: MPDClient, filter: Filter, sort = noSort) =
@@ -1201,6 +1206,15 @@ iterator readComments*(mpd: MPDClient, uri: string): (string, string) =
   mpd.runCommand "readcomments", uri
   for pair in mpd: yield pair
 
+proc readPicture*(mpd: MPDClient, offset = 0):
+    tuple[size: uint32, mimetype: string, data: seq[byte]] =
+  ## Requires MPD >= 0.22
+  mpd.runCommand "readpicture", offset.toArg
+  result.size = mpd.getValue.parseUint32
+  result.mimetype = mpd.getValue
+  result.data = mpd.getBinary
+  mpd.expectOk
+
 proc update*(mpd: MPDClient): uint32 =
   mpd.runCommand "update"
   mpd.getValue.parseUint32
@@ -1324,6 +1338,14 @@ iterator listPartitions*(mpd: MPDClient): Partition =
 
 proc newPartition*(mpd: MPDClient, name: string) =
   mpd.runCommandOk "newpartition", name
+
+proc delPartition*(mpd: MPDClient, name: string) =
+  ## Requires MPD >= 0.22
+  mpd.runCommandOk "delpartition", name
+
+proc moveOutput*(mpd: MPDClient, name: string) =
+  ## Requires MPD >= 0.22
+  mpd.runCommandOk "moveoutput", name
 
 # Audio output devices
 
