@@ -1,4 +1,4 @@
-import os, net, strutils, times, strtabs, options, macros, sequtils
+import os, net, asyncnet, asyncdispatch, strutils, times, strtabs, options, macros, sequtils
 from posix import Stat, stat, S_ISSOCK
 export options.get, options.isSome
 export strtabs.`[]`, strtabs.`$`, strtabs.getOrDefault, strtabs.contains
@@ -7,11 +7,15 @@ export strtabs.`[]`, strtabs.`$`, strtabs.getOrDefault, strtabs.contains
 {.warning[ProveInit]: off.}
 
 type
-  MPDClient* = ref object
+  MPDClientBase[T] = ref object
     host: string
     port: Port
     password: string
-    socket: Socket
+    socket: T
+
+  MPDClient* = MPDClientBase[Socket]
+  AsyncMPDClient* = MPDClientBase[AsyncSocket]
+  SomeMPDClient* = MPDClient | AsyncMPDClient
 
   ReplyKind = enum
     replyOk, replyAck, replyPair
@@ -184,10 +188,11 @@ proc `$`*(b: BitDepth): string =
 proc `$`*(a: AudioFormat): string = $a.rate & ":" & $a.bitDepth & ":" & $a.channels
 
 template readLine(mpd: MPDClient): string = mpd.socket.recvLine
+template readLine(mpd: AsyncMPDClient): string = await mpd.socket.recvLine
 
 # Connection
 
-proc connect(mpd: var MPDClient) =
+proc connect(mpd: var SomeMPDClient) =
   if mpd.host.startsWith '/':
     mpd.socket = newSocket(AF_UNIX)
     mpd.socket.connectUnix mpd.host
@@ -322,18 +327,18 @@ proc parseReply(s: string): Reply =
     let splits = s.split(':', maxsplit = 1)
     Reply(kind: replyPair, key: splits[0], value: splits[1].strip)
 
-proc expectOk(mpd: MPDClient) {.inline.} =
+proc expectOk(mpd: MPDClient | AsyncMPDClient) {.multisync.} =
   let reply = mpd.readLine.parseReply
   if reply.kind == replyAck:
     raise newException(CatchableError, reply.ack)
 
-proc expectList(mpd: MPDClient): bool {.inline.} =
+proc expectList(mpd: MPDClient | AsyncMPDClient): Future[bool] {.multisync.} =
   let reply = mpd.readLine.parseReply
   if reply.kind == replyAck:
     raise newException(CatchableError, reply.ack)
-  reply.kind == replyPair
+  result = reply.kind == replyPair
 
-proc getPair(mpd: MPDClient): Pair =
+proc getPair(mpd: MPDClient | AsyncMPDClient): Future[Pair] {.multisync.} =
   let reply = mpd.readLine.parseReply
   case reply.kind
   of replyPair:
@@ -343,16 +348,19 @@ proc getPair(mpd: MPDClient): Pair =
   of replyAck:
     raise newException(CatchableError, reply.ack)
 
-proc getValue(mpd: MPDClient): string =
-  result = mpd.getPair.value
-  mpd.expectOk
+proc getValue(mpd: MPDClient | AsyncMPDClient): Future[string] {.multisync.} =
+  result = mpd.getPair.await.value
+  await mpd.expectOk
 
-proc getBinary(mpd: MPDClient): seq[byte] =
-  let pair = mpd.getPair
+proc recv(socket: AsyncSocket, buf: pointer, size: int): Future[int] =
+  result = socket.recvInto(buf, size)
+
+proc getBinary(mpd: MPDClient | AsyncMPDClient): Future[seq[byte]] {.multisync.} =
+  let pair = await mpd.getPair
   assert pair.key == "binary"
   let size = pair.value.parseUint32.int
   result.newSeq size
-  let read = mpd.socket.recv(addr result[0], size)
+  let read = await mpd.socket.recv(addr result[0], size)
   assert read == size
 
 iterator items(mpd: MPDClient): Pair =
@@ -363,6 +371,17 @@ iterator items(mpd: MPDClient): Pair =
     case reply.kind
     of replyPair:
       yield (reply.key, reply.value)
+    of replyOk:
+      break
+    of replyAck:
+      raise newException(CatchableError, reply.ack)
+
+proc items(mpd: AsyncMPDClient): Future[seq[Pair]] {.async.} =
+  while true:
+    let reply = mpd.socket.recvLine.await.parseReply
+    case reply.kind
+    of replyPair:
+      result.add (reply.key, reply.value)
     of replyOk:
       break
     of replyAck:
@@ -386,16 +405,16 @@ template getStructList(mpd: MPDClient; s: string, p): untyped =
     pairs.add pair
   result.add p(pairs)
 
-proc getValues(mpd: MPDClient): seq[string] =
-  for (_, val) in mpd:
+proc getValues(mpd: MPDClient | AsyncMPDClient): Future[seq[string]] {.async.} =
+  for (_, val) in mpd.items:
     result.add val
 
 template iterateValues(mpd: MPDClient): untyped =
-  for pair in mpd:
+  for pair in mpd.items:
     yield pair.value
 
-proc getStatus(mpd: MPDClient): Status =
-  for (key, value) in mpd:
+proc getStatus(mpd: MPDClient | AsyncMPDClient): Future[Status] {.multisync.} =
+  for (key, value) in mpd.items:
     case key
     of "partition":
       result.partition = value
@@ -454,8 +473,8 @@ proc getStatus(mpd: MPDClient): Status =
     else:
       raise newException(CatchableError, "Unknown struct key: " & key)
 
-proc getStats(mpd: MPDClient): Stats =
-  for (key, value) in mpd:
+proc getStats(mpd: MPDClient | AsyncMPDClient): Future[Stats] {.multisync.} =
+  for (key, value) in mpd.items:
     case key
     of "artists":
       result.artists = value.parseUint32
@@ -646,20 +665,21 @@ func sortBy*(tag: Tag, descending = false): SortOrder =
 
 # Execution
 
-proc runCommand(mpd: MPDClient; cmd: string, args: varargs[string]) =
+proc runCommand(mpd: MPDClient | AsyncMPDClient; cmd: string, args: varargs[string]) {.multisync.} =
   var command = cmd
   for arg in args:
     command &= " "
     command &= arg.escape
-  mpd.socket.send command & "\x0a"
+  await mpd.socket.send command & "\x0a"
 
-proc runCommandOk(mpd: MPDClient; cmd: string, args: varargs[string]) {.inline.} =
-  mpd.runCommand(cmd, args)
-  mpd.expectOk
+proc runCommandOk(mpd: MPDClient | AsyncMPDClient; cmd: string, args: varargs[string]) {.multisync.} =
+  await mpd.runCommand(cmd, args)
+  await mpd.expectOk
 
-proc runCommandList(mpd: MPDClient; cmd: string, args: varargs[string]): bool {.inline.} =
-  mpd.runCommand(cmd, args)
-  mpd.expectList
+proc runCommandList(mpd: MPDClient | AsyncMPDClient; cmd: string, args: varargs[string]):
+    Future[bool] {.multisync.} =
+  await mpd.runCommand(cmd, args)
+  result = await mpd.expectList
 
 # Commands:
 
