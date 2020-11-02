@@ -192,23 +192,33 @@ template readLine(mpd: AsyncMPDClient): string = await mpd.socket.recvLine
 
 # Connection
 
-proc connect(mpd: var SomeMPDClient) =
-  if mpd.host.startsWith '/':
-    mpd.socket = newSocket(AF_UNIX)
-    mpd.socket.connectUnix mpd.host
-  else:
-    mpd.socket = newSocket()
-    mpd.socket.connect mpd.host, mpd.port
+proc connect(mpd: MPDClient | AsyncMPDClient) {.multisync.} =
+  await:
+    if mpd.host.startsWith '/':
+      mpd.socket.connectUnix mpd.host
+    else:
+      mpd.socket.connect mpd.host, mpd.port
 
   if not mpd.readLine.startsWith "OK MPD ":
     raise newException(CatchableError, "Error while connecting")
+
+proc createSocket(mpd: var MPDClient) =
+  if mpd.host.startsWith '/':
+    mpd.socket = newSocket(AF_UNIX)
+  else:
+    mpd.socket = newSocket()
+
+proc createSocket(mpd: var AsyncMPDClient) =
+  if mpd.host.startsWith '/':
+    mpd.socket = newAsyncSocket(AF_UNIX)
+  else:
+    mpd.socket = newAsyncSocket()
 
 proc existsSocket(s: string): bool =
   var res: Stat
   return stat(s, res) >= 0 and S_ISSOCK(res.st_mode)
 
-proc newMPDClient*(): MPDClient =
-  result = MPDClient(host: "127.0.0.1")
+template newMPDClientImpl: untyped =
   result.port = block:
     let port = getEnv "MPD_PORT"
     if port.len > 0:
@@ -231,11 +241,27 @@ proc newMPDClient*(): MPDClient =
     if existsSocket socket:
       result.host = socket
 
+  result.createSocket
+
+proc newMPDClient*(): MPDClient =
+  result = MPDClient(host: "127.0.0.1")
+  newMPDClientImpl()
   result.connect
+
+proc newAsyncMPDClient*(): AsyncMPDClient =
+  result = AsyncMPDClient(host: "127.0.0.1")
+  newMPDClientImpl()
+  waitFor result.connect
 
 proc newMPDClient*(host: string, port = 6600'u16, password = ""): MPDClient =
   result = MPDClient(host: host, port: port.Port, password: password)
+  result.createSocket
   result.connect
+
+proc newAsyncMPDClient*(host: string, port = 6600'u16, password = ""): AsyncMPDClient =
+  result = AsyncMPDClient(host: host, port: port.Port, password: password)
+  result.createSocket
+  waitFor result.connect
 
 # Argument conversion
 
@@ -387,26 +413,51 @@ proc items(mpd: AsyncMPDClient): Future[seq[Pair]] {.async.} =
     of replyAck:
       raise newException(CatchableError, reply.ack)
 
+template iterate(mpd: AsyncMPDClient, key, val, body): untyped =
+  for (key, val) in mpd.items.await:
+    body
+
+template iterate(mpd: MPDClient | seq[Pair], key, val, body): untyped =
+  for (key, val) in mpd.items:
+    body
+
+template iterate(mpd: AsyncMPDClient, pair, body): untyped =
+  for pair in mpd.items.await:
+    body
+
+template iterate(mpd: MPDClient | seq[Pair], pair, body): untyped =
+  for pair in mpd.items:
+    body
+
 template iterateStructList(mpd: MPDClient; s: string, p): untyped =
   var pairs: seq[Pair]
   for pair in mpd:
     if pairs.len > 0 and pair.key == s:
       yield p(pairs)
-      reset pairs
+      pairs.setLen 0
     pairs.add pair
   yield p(pairs)
 
 template getStructList(mpd: MPDClient; s: string, p): untyped =
   var pairs: seq[Pair]
-  for pair in mpd:
+  mpd.iterate pair:
     if pairs.len > 0 and pair.key == s:
       result.add p(pairs)
-      reset pairs
+      pairs.setLen 0
     pairs.add pair
   result.add p(pairs)
 
-proc getValues(mpd: MPDClient | AsyncMPDClient): Future[seq[string]] {.async.} =
-  for (_, val) in mpd.items:
+template getStructList(mpd: AsyncMPDClient; s: string, p): untyped =
+  var pairs: seq[Pair]
+  mpd.iterate pair:
+    if pairs.len > 0 and pair.key == s:
+      result.add p(pairs)
+      pairs.setLen 0
+    pairs.add pair
+  result.add p(pairs)
+
+proc getValues(mpd: MPDClient | AsyncMPDClient): Future[seq[string]] {.multisync.} =
+  mpd.iterate _, val:
     result.add val
 
 template iterateValues(mpd: MPDClient): untyped =
@@ -414,7 +465,7 @@ template iterateValues(mpd: MPDClient): untyped =
     yield pair.value
 
 proc getStatus(mpd: MPDClient | AsyncMPDClient): Future[Status] {.multisync.} =
-  for (key, value) in mpd.items:
+  mpd.iterate key, value:
     case key
     of "partition":
       result.partition = value
@@ -474,7 +525,7 @@ proc getStatus(mpd: MPDClient | AsyncMPDClient): Future[Status] {.multisync.} =
       raise newException(CatchableError, "Unknown struct key: " & key)
 
 proc getStats(mpd: MPDClient | AsyncMPDClient): Future[Stats] {.multisync.} =
-  for (key, value) in mpd.items:
+  mpd.iterate key, value:
     case key
     of "artists":
       result.artists = value.parseUint32
@@ -495,7 +546,43 @@ proc getStats(mpd: MPDClient | AsyncMPDClient): Future[Stats] {.multisync.} =
 
 proc getSong(source: MPDClient | seq[Pair]): Song =
   result.tags = newStringTable()
-  for (key, value) in source:
+  source.iterate key, value:
+    case key
+    of "file":
+      result.file = value
+    of "Title":
+      result.title = value
+    of "Last-Modified":
+      result.lastModification = value.parse("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    of "Artist":
+      result.artist = value
+    of "Name":
+      result.name = value
+    of "Time":
+      result.duration = initDuration(seconds = value.parseInt)
+    of "Range":
+      result.range = value.parseTimeRange
+    of "Id":
+      if result.place.isSome:
+        result.place.get.id = value.parseUint32
+      else:
+        result.place = some(QueuePlace(id: value.parseUint32))
+    of "Pos":
+      if result.place.isSome:
+        result.place.get.pos = value.parseUint32
+      else:
+        result.place = some(QueuePlace(pos: value.parseUint32))
+    of "Prio":
+      if result.place.isSome:
+        result.place.get.priority = value.parseInt.uint8
+      else:
+        result.place = some(QueuePlace(priority: value.parseInt.uint8))
+    else:
+      result.tags[key] = value
+
+proc getSong(source: AsyncMPDClient): Future[Song] {.async.} =
+  result.tags = newStringTable()
+  source.iterate key, value:
     case key
     of "file":
       result.file = value
@@ -665,50 +752,108 @@ func sortBy*(tag: Tag, descending = false): SortOrder =
 
 # Execution
 
-proc runCommand(mpd: MPDClient | AsyncMPDClient; cmd: string, args: varargs[string]) {.multisync.} =
+proc runCommand(mpd: MPDClient | AsyncMPDClient; cmd: string,
+    args: seq[string]) {.multisync.} =
   var command = cmd
   for arg in args:
     command &= " "
     command &= arg.escape
   await mpd.socket.send command & "\x0a"
 
-proc runCommandOk(mpd: MPDClient | AsyncMPDClient; cmd: string, args: varargs[string]) {.multisync.} =
+proc runCommandOk(mpd: MPDClient | AsyncMPDClient; cmd: string,
+    args: seq[string]) {.multisync.} =
   await mpd.runCommand(cmd, args)
   await mpd.expectOk
 
-proc runCommandList(mpd: MPDClient | AsyncMPDClient; cmd: string, args: varargs[string]):
-    Future[bool] {.multisync.} =
+proc runCommandList(mpd: MPDClient | AsyncMPDClient; cmd: string,
+  args: seq[string]): Future[bool] {.multisync.} =
   await mpd.runCommand(cmd, args)
+  result = await mpd.expectList
+
+proc runCommand(mpd: MPDClient | AsyncMPDClient; cmd: string) {.multisync.} =
+  await mpd.socket.send cmd & "\x0a"
+
+proc runCommandOk(mpd: MPDClient | AsyncMPDClient; cmd: string) {.multisync.} =
+  await mpd.runCommand(cmd)
+  await mpd.expectOk
+
+proc runCommandList(mpd: MPDClient | AsyncMPDClient; cmd: string): Future[bool] {.multisync.} =
+  await mpd.runCommand(cmd)
+  result = await mpd.expectList
+
+proc runCommand(mpd: MPDClient | AsyncMPDClient; cmd, arg: string) {.multisync.} =
+  await mpd.socket.send cmd & " " & arg.escape & "\x0a"
+
+proc runCommandOk(mpd: MPDClient | AsyncMPDClient; cmd, arg: string) {.multisync.} =
+  await mpd.runCommand(cmd, arg)
+  await mpd.expectOk
+
+proc runCommandList(mpd: MPDClient | AsyncMPDClient; cmd, arg: string): Future[bool] {.multisync.} =
+  await mpd.runCommand(cmd, arg)
+  result = await mpd.expectList
+
+proc runCommand(mpd: MPDClient | AsyncMPDClient; cmd, arg1, arg2: string) {.multisync.} =
+  await mpd.socket.send cmd & " " & arg1.escape & " " & arg2.escape & "\x0a"
+
+proc runCommandOk(mpd: MPDClient | AsyncMPDClient; cmd, arg1, arg2: string) {.multisync.} =
+  await mpd.runCommand(cmd, arg1, arg2)
+  await mpd.expectOk
+
+proc runCommandList(mpd: MPDClient | AsyncMPDClient; cmd, arg1, arg2: string): Future[bool] {.multisync.} =
+  await mpd.runCommand(cmd, arg1, arg2)
+  result = await mpd.expectList
+
+proc runCommand(mpd: MPDClient | AsyncMPDClient; cmd, arg1, arg2, arg3: string) {.multisync.} =
+  await mpd.socket.send cmd & " " & arg1.escape & " " & arg2.escape & " " & arg3.escape & "\x0a"
+
+proc runCommandOk(mpd: MPDClient | AsyncMPDClient; cmd, arg1, arg2, arg3: string) {.multisync.} =
+  await mpd.runCommand(cmd, arg1, arg2, arg3)
+  await mpd.expectOk
+
+proc runCommandList(mpd: MPDClient | AsyncMPDClient; cmd, arg1, arg2, arg3: string): Future[bool] {.multisync.} =
+  await mpd.runCommand(cmd, arg1, arg2, arg3)
+  result = await mpd.expectList
+
+proc runCommand(mpd: MPDClient | AsyncMPDClient; cmd, arg1, arg2, arg3, arg4: string) {.multisync.} =
+  await mpd.socket.send cmd & " " & arg1.escape & " " & arg2.escape & " " & arg3.escape & " " & arg4.escape & "\x0a"
+
+proc runCommandOk(mpd: MPDClient | AsyncMPDClient; cmd, arg1, arg2, arg3, arg4: string) {.multisync.} =
+  await mpd.runCommand(cmd, arg1, arg2, arg3, arg4)
+  await mpd.expectOk
+
+proc runCommandList(mpd: MPDClient | AsyncMPDClient; cmd, arg1, arg2, arg3, arg4: string): Future[bool] {.multisync.} =
+  await mpd.runCommand(cmd, arg1, arg2, arg3, arg4)
   result = await mpd.expectList
 
 # Commands:
 
 # Querying MPD status
 
-proc clearError*(mpd: MPDClient) =
-  mpd.runCommandOk "clearerror"
+proc clearError*(mpd: MPDClient | AsyncMPDClient) {.multisync.} =
+  await mpd.runCommandOk "clearerror"
 
-proc currentSong*(mpd: MPDClient): Option[Song] =
-  mpd.runCommand "currentsong"
-  let song = mpd.getSong
+proc currentSong*(mpd: MPDClient | AsyncMPDClient): Future[Option[Song]] {.multisync.} =
+  await mpd.runCommand "currentsong"
+  let song = await mpd.getSong
   if song.place.isSome:
     result = some(song)
 
-proc idle*(mpd: MPDClient, subsystem: string | SubsystemKind): SubsystemKind =
-  mpd.runCommand "idle", subsystem.toArg
-  mpd.getValue.parseSubsystem
+proc idle*(mpd: MPDClient | AsyncMPDClient, subsystem: string | SubsystemKind):
+    Future[SubsystemKind] {.multisync.} =
+  await mpd.runCommand("idle", subsystem.toArg)
+  result = mpd.getValue.await.parseSubsystem
 
-proc idle*(mpd: MPDClient): SubsystemKind =
-  mpd.runCommand "idle"
-  mpd.getValue.parseSubsystem
+proc idle*(mpd: MPDClient | AsyncMPDClient): Future[SubsystemKind] {.multisync.} =
+  await mpd.runCommand "idle"
+  result =  mpd.getValue.await.parseSubsystem
 
-proc status*(mpd: MPDClient): Status =
-  mpd.runCommand "status"
-  mpd.getStatus
+proc status*(mpd: MPDClient | AsyncMPDClient): Future[Status] {.multisync.} =
+  await mpd.runCommand "status"
+  result = await mpd.getStatus
 
-proc stats*(mpd: MPDClient): Stats =
-  mpd.runCommand "stats"
-  mpd.getStats
+proc stats*(mpd: MPDClient | AsyncMPDClient): Future[Stats] {.multisync.} =
+  await mpd.runCommand "stats"
+  result = await mpd.getStats
 
 # Playback options
 
@@ -807,9 +952,15 @@ proc move*(mpd: MPDClient; range: uint32 | SongRange, to: uint32) =
 proc moveId*(mpd: MPDClient; id, to: uint32) =
   mpd.runCommandOk "moveid", id.toArg, to.toArg
 
-proc playlistFind*(mpd: MPDClient, tag: Tag, needle: string): seq[Song] =
+proc playlistFind*(mpd: MPDClient, tag: Tag, needle: string):
+  seq[Song] =
   if mpd.runCommandList("playlistfind", tag.toArg, needle):
-    mpd.getStructList "file", getSong
+    mpd.getStructList("file", getSong)
+
+proc playlistFind*(mpd: AsyncMPDClient, tag: Tag, needle: string):
+  Future[seq[Song]] {.async.} =
+  if await mpd.runCommandList("playlistfind", tag.toArg, needle):
+    mpd.getStructList("file", getSong)
 
 iterator playlistFind*(mpd: MPDClient, tag: Tag, needle: string): Song =
   if mpd.runCommandList("playlistfind", tag.toArg, needle):
@@ -922,9 +1073,9 @@ proc cleartagid*(mpd: MPDClient, id: uint32) =
 
 # Stored playlists
 
-proc listPlaylist*(mpd: MPDClient, name: string): seq[Song] =
-  mpd.runCommand "listplaylist", name
-  mpd.getStructList "file", getSong
+proc listPlaylist*(mpd: MPDClient | AsyncMPDClient, name: string): Future[seq[Song]] {.multisync.} =
+  await mpd.runCommand("listplaylist", name)
+  mpd.getStructList("file", getSong)
 
 iterator listPlaylist*(mpd: MPDClient, name: string): Song =
   mpd.runCommand "listplaylist", name
@@ -938,8 +1089,8 @@ iterator listPlaylistInfo*(mpd: MPDClient, name: string): Song =
   mpd.runCommand "listplaylistinfo", name
   mpd.iterateStructList "file", getSong
 
-proc listPlaylists*(mpd: MPDClient): seq[Playlist] =
-  mpd.runCommand "listplaylists"
+proc listPlaylists*(mpd: MPDClient | AsyncMPDClient): Future[seq[Playlist]] {.multisync.} =
+  await mpd.runCommand "listplaylists"
   mpd.getStructList "playlist", getPlaylist
 
 iterator listPlaylists*(mpd: MPDClient): Playlist =
