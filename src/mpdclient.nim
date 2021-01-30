@@ -189,7 +189,7 @@ template readLine(mpd: MPDClient): string = mpd.socket.recvLine
 
 proc connect(mpd: var MPDClient) =
   if mpd.host.startsWith '/':
-    mpd.socket = newSocket(AF_UNIX)
+    mpd.socket = newSocket(AF_UNIX, SOCK_STREAM, IPPROTO_IP)
     mpd.socket.connectUnix mpd.host
   else:
     mpd.socket = newSocket()
