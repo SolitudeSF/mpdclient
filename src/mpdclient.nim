@@ -44,7 +44,8 @@ type
     subSticker = "sticker", subSubscription = "subscribtion", subMessage = "message"
 
   Song* = object
-    file*, name*, title*, artist*: string
+    file*, name*, title*: string
+    artists*: seq[string]
     place*: Option[QueuePlace]
     lastModification*: DateTime
     duration*: Duration
@@ -485,7 +486,7 @@ proc getSong(source: MPDClient | seq[Pair]): Song =
     of "Last-Modified":
       result.lastModification = value.parse("yyyy-MM-dd'T'HH:mm:ss'Z'")
     of "Artist":
-      result.artist = value
+      result.artists.add value
     of "Name":
       result.name = value
     of "Time":

@@ -31,7 +31,7 @@ let song = mpd.currentSong
 if song.isSome:
   let song = song.get
   echo "uri: ", song.file
-  echo "artist: ", song.artist
+  echo "artist: ", song.artists[0]
   echo "album: ", song.tags[$tagAlbum]
   echo "title: ", song.title
   echo "track: ", song.tags[$tagTrack]
