@@ -291,14 +291,14 @@ func parseFloatSeconds(s: string): Duration =
   initDuration(milliseconds = int(s.parseFloat * 1000))
 
 func parseTimeRange(s: string): TimeRange =
-  let splits = s.split('-', maxsplit = 1)
-  result.a = splits[0].parseFloatSeconds
-  if splits[1].len > 0:
-    result.b = some(splits[1].parseFloatSeconds)
+  let idx = s.find '-'
+  result.a = s[0..<idx].parseFloatSeconds
+  if idx < s.high:
+    result.b = some(s[idx + 1..^1].parseFloatSeconds)
 
 func parseTime(s: string): (Duration, Duration) =
-  let splits = s.split(':', maxsplit = 1)
-  (splits[0].parseFloatSeconds, splits[1].parseFloatSeconds)
+  let idx = s.find ':'
+  (s[0..<idx].parseFloatSeconds, s[idx + 1..^1].parseFloatSeconds)
 
 func parseBitDepth(s: string): BitDepth =
   if s == "f":
@@ -307,10 +307,12 @@ func parseBitDepth(s: string): BitDepth =
     BitDepth(kind: bdFixed, bits: s.parseInt.uint8)
 
 func parseAudioFormat(s: string): AudioFormat =
-  let splits = s.split(':', maxsplit = 2)
-  result.rate = splits[0].parseUint32
-  result.bitDepth = splits[1].parseBitDepth
-  result.channels = splits[2].parseInt.uint8
+  let
+    idx1 = s.find ':'
+    idx2 = s.find(':', start = idx1 + 1)
+  result.rate = s[0..<idx1].parseUint32
+  result.bitDepth = s[idx1 + 1..<idx2].parseBitDepth
+  result.channels = s[idx2 + 1..^1].parseInt.uint8
 
 # Parsing response
 
@@ -320,8 +322,8 @@ proc parseReply(s: string): Reply =
   elif s.startsWith "ACK ":
     Reply(kind: replyAck, ack: s[4..^1])
   else:
-    let splits = s.split(':', maxsplit = 1)
-    Reply(kind: replyPair, key: splits[0], value: splits[1].strip)
+    let idx = s.find ':'
+    Reply(kind: replyPair, key: s[0..<idx], value: s[idx + 1..^1].strip)
 
 proc expectOk(mpd: MPDClient) {.inline.} =
   let reply = mpd.readLine.parseReply
@@ -545,9 +547,9 @@ proc getSticker(source: MPDClient | seq[Pair]): Sticker =
   for (key, value) in source:
     case key:
     of "sticker":
-      let splits = value.split('=', maxsplit = 1)
-      result.name = splits[0]
-      result.value = splits[1]
+      let idx = value.find '='
+      result.name = value[0..<idx]
+      result.value = value[idx + 1..^1]
     else:
       raise newException(CatchableError, "Unknown key: " & key)
 
@@ -557,9 +559,9 @@ proc getFileSticker(source: MPDClient | seq[Pair]): FileSticker =
     of "file":
       result.uri = value
     of "sticker":
-      let splits = value.split('=', maxsplit = 1)
-      result.sticker.name = splits[0]
-      result.sticker.value = splits[1]
+      let idx = value.find '='
+      result.sticker.name = value[0..<idx]
+      result.sticker.value = value[idx + 1..^1]
     else:
       raise newException(CatchableError, "Unknown key: " & key)
 
