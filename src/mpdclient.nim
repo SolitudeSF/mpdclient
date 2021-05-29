@@ -414,6 +414,8 @@ proc getStatus(mpd: MPDClient): Status =
       result.single = value.parseBool
     of "mixrampdb":
       result.mixrampdb = value.parseFloat
+    of "mixrampdelay":
+      result.mixrampdelay = initDuration(seconds = value.parseInt)
     of "bitrate":
       result.bitrate = value.parseUint32
     of "state":
