@@ -454,6 +454,8 @@ proc getStatus(mpd: MPDClient): Status =
       result.updatingDb = value.parseUint32.some
     of "error":
       result.error = value.some
+    of "xfade":
+      result.crossfade = initDuration(seconds = value.parseInt)
     else:
       raise newException(CatchableError, "Unknown struct key: " & key)
 
