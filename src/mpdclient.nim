@@ -49,6 +49,7 @@ type
     place*: Option[QueuePlace]
     lastModification*: DateTime
     duration*: Duration
+    audio*: AudioFormat
     range*: TimeRange
     tags*: StringTableRef
 
@@ -502,6 +503,10 @@ proc getSong(source: MPDClient | seq[Pair]): Song =
       result.name = value
     of "Time":
       result.duration = initDuration(seconds = value.parseInt)
+    of "duration":
+      result.duration = initDuration(milliseconds = int(value.parseFloat * 1000))
+    of "Format":
+      result.audio = value.parseAudioFormat
     of "Range":
       result.range = value.parseTimeRange
     of "Id":
