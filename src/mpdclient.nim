@@ -719,6 +719,10 @@ proc single*(mpd: MPDClient; val: bool) =
 proc setVol*(mpd: MPDClient; val: range[0..100]) =
   mpd.runCommandOk "setvol", val.toArg
 
+proc getVol*(mpd: MPDClient): int8 =
+  mpd.runCommand "getvol"
+  mpd.getValue.parseInt.int8
+
 template volume*(mpd, val) = mpd.setVol val
 
 proc mixRampDb*(mpd: MPDClient; val: float32) =
