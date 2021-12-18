@@ -1,32 +1,55 @@
-import times, options
+import times, options, strutils
 import ./types
 
-func toArg*(arg: string): string {.inline.} = arg
+func addArg*(result: var string, arg: string) {.inline.} =
+  result.add escape arg
 
-func toArg*(arg: Filter): string {.inline.} = string arg
+func addArg*(result: var string, arg: Filter) {.inline.} =
+  result.add string arg
 
-func toArg*(arg: bool): string {.inline.} = (if arg: "1" else: "0")
+func addArg*(result: var string, arg: bool) {.inline.} =
+  result.add if arg: '1' else: '0'
 
-func toArg*(arg: SongRange): string {.inline.} = $arg.a & ":" & $(arg.b + 1)
+func addArg*(result: var string, arg: SongRange) {.inline.} =
+  result.addInt arg.a
+  result.add ':'
+  result.addInt arg.b + 1
 
-func toArg*(arg: Duration): string {.inline.} =
-  $(arg.inMilliseconds.float / 1000)
+func addArg*(result: var string, arg: Duration) {.inline.} =
+  result.addFloat arg.inMilliseconds.float / 1000
 
-func toArg*(arg: TimeRange): string {.inline.} =
-  $arg.a & ":" & (if arg.b.isSome: arg.b.get.toArg else: "")
+func addArg*(result: var string, arg: TimeRange) {.inline.} =
+  result.addArg arg.a
+  result.add ':'
+  if arg.b.isSome: result.addArg arg.b.get
 
-func toArg*(arg: HSlice[float, float]): string {.inline.} = $arg.a & ":" & $arg.b
+func addArg*(result: var string, arg: Slice[float]) {.inline.} =
+  result.addFloat arg.a
+  result.add ':'
+  result.addFloat arg.b
 
-func toArg*(arg: Output): string {.inline.} = $arg.id
+func addArg*(result: var string, arg: Output) {.inline.} =
+  result.addInt arg.id
 
-func toArg*(arg: AudioFormat): string {.inline.} =
-  (if arg.rate == 0: "*" else: $arg.rate) & ":" &
-  (if arg.bitDepth.bits == 0: "*" else: $arg.bitDepth) & ":" &
-  (if arg.channels == 0: "*" else: $arg.channels)
+func addArg*(result: var string, arg: AudioFormat) {.inline.} =
+  if arg.rate == 0: result.add '*' else: result.addInt arg.rate
+  result.add ':'
+  if arg.bitDepth.bits == 0: result.add '*' else: result.add $arg.bitDepth
+  result.add ':'
+  if arg.channels == 0: result.add '*' else: result.addInt arg.channels
 
-func toArg*(arg: SortOrder): string {.inline.} =
-  (if arg.descending: "-" else: "") & $arg.tag
+func addArg*(result: var string, arg: SortOrder) {.inline.} =
+  if arg.descending: result.add '-'
+  result.add $arg.tag
 
-func toArg*(arg: Partition | Playlist): string {.inline.} = arg.name
+func addArg*(result: var string, arg: Partition | Playlist) {.inline.} =
+  result.add arg.name
 
-func toArg*[T](arg: T): string {.inline.} = $arg
+func addArg*(result: var string, arg: SomeFloat) {.inline.} =
+  result.addFloat arg
+
+func addArg*(result: var string, arg: SomeInteger | range) {.inline.} =
+  result.addInt arg
+
+func addArg*(result: var string, arg: Tag | ReplayGainMode | StickerOperator) {.inline.} =
+  result.add $arg

@@ -1,4 +1,4 @@
-import std/[strutils, times, strtabs, options, sequtils]
+import std/[strutils, times, strtabs, options]
 export options.get, options.isSome
 export strtabs.`[]`, strtabs.`$`, strtabs.getOrDefault, strtabs.contains
 
@@ -6,7 +6,8 @@ export strtabs.`[]`, strtabs.`$`, strtabs.getOrDefault, strtabs.contains
 {.warning[ProveInit]: off.}
 
 import ./mpdclient/[types, args, parse, client, filters]
-export types, client, filters
+export types, filters
+export newMPDClient
 
 # Querying MPD status
 
@@ -20,7 +21,7 @@ proc currentSong*(mpd: MPDClient): Option[Song] =
     result = some(song)
 
 proc idle*(mpd: MPDClient, subsystem: string | SubsystemKind): SubsystemKind =
-  mpd.runCommand "idle", subsystem.toArg
+  mpd.runCommand "idle", subsystem
   mpd.getValue.parseSubsystem
 
 proc idle*(mpd: MPDClient): SubsystemKind =
@@ -38,19 +39,19 @@ proc stats*(mpd: MPDClient): Stats =
 # Playback options
 
 proc consume*(mpd: MPDClient; val: bool) =
-  mpd.runCommandOk "consume", val.toArg
+  mpd.runCommandOk "consume", val
 
 proc repeat*(mpd: MPDClient; val: bool) =
-  mpd.runCommandOk "repeat", val.toArg
+  mpd.runCommandOk "repeat", val
 
 proc random*(mpd: MPDClient; val: bool) =
-  mpd.runCommandOk "random", val.toArg
+  mpd.runCommandOk "random", val
 
 proc single*(mpd: MPDClient; val: bool) =
-  mpd.runCommandOk "single", val.toArg
+  mpd.runCommandOk "single", val
 
 proc setVol*(mpd: MPDClient; val: range[0..100]) =
-  mpd.runCommandOk "setvol", val.toArg
+  mpd.runCommandOk "setvol", val
 
 proc getVol*(mpd: MPDClient): int8 =
   mpd.runCommand "getvol"
@@ -59,13 +60,13 @@ proc getVol*(mpd: MPDClient): int8 =
 template volume*(mpd, val) = mpd.setVol val
 
 proc mixRampDb*(mpd: MPDClient; val: float32) =
-  mpd.runCommandOk "mixrampdb", val.toArg
+  mpd.runCommandOk "mixrampdb", val
 
 proc mixRampDelay*(mpd: MPDClient; val: float64) =
-  mpd.runCommandOk "mixrampdelay", val.toArg
+  mpd.runCommandOk "mixrampdelay", val
 
 proc replayGainMode*(mpd: MPDClient; val: ReplayGainMode) =
-  mpd.runCommandOk "replay_gain_mode", val.toArg
+  mpd.runCommandOk "replay_gain_mode", val
 
 proc replayGainStatus*(mpd: MPDClient): ReplayGainMode =
   mpd.runCommand "replay_gain_status"
@@ -86,62 +87,63 @@ proc togglePause*(mpd: MPDClient) =
   mpd.runCommandOk "pause"
 
 proc pause*(mpd: MPDClient; val: bool) =
-  mpd.runCommandOk "pause", val.toArg
+  mpd.runCommandOk "pause", val
 
 proc play*(mpd: MPDClient) =
   mpd.runCommandOk "play"
 
 proc play*(mpd: MPDClient; pos: uint32) =
-  mpd.runCommandOk "play", pos.toArg
+  mpd.runCommandOk "play", pos
 
 proc playId*(mpd: MPDClient; id: uint32) =
-  mpd.runCommandOk "playid", id.toArg
+  mpd.runCommandOk "playid", id
 
 proc seek*(mpd: MPDClient; pos: uint32, dur: Duration | float) =
-  mpd.runCommandOk "seek", pos, dur.toArg
+  mpd.runCommandOk "seek", pos, dur
 
 proc seekId*(mpd: MPDClient; id: uint32, dur: Duration | float) =
-  mpd.runCommandOk "seekid", id, dur.toArg
+  mpd.runCommandOk "seekid", id, dur
 
 proc seekCur*(mpd: MPDClient; dur: Duration | float) =
-  mpd.runCommandOk "seekcur", dur.toArg
-
-template seek*(mpd, dur) = mpd.seekCur dur
+  mpd.runCommandOk "seekcur", dur
 
 # The Queue
 
 proc add*(mpd: MPDClient; uri: string) =
   mpd.runCommandOk "add", uri
 
+proc add*(mpd: MPDClient; uri: string, pos: int) =
+  mpd.runCommandOk "add", uri, pos
+
 proc addId*(mpd: MPDClient; uri: string): uint32 =
   mpd.runCommand "addid", uri
   mpd.getValue.parseUint32
 
 proc addId*(mpd: MPDClient; uri: string, pos: uint32): uint32 =
-  mpd.runCommand "addid", uri, pos.toArg
+  mpd.runCommand "addid", uri, pos
   mpd.getValue.parseUint32
 
 proc clear*(mpd: MPDClient) =
   mpd.runCommandOk "clear"
 
 proc delete*(mpd: MPDClient; range: uint32 | SongRange) =
-  mpd.runCommandOk "delete", range.toArg
+  mpd.runCommandOk "delete", range
 
 proc deleteId*(mpd: MPDClient; id: uint32) =
-  mpd.runCommandOk "deleteid", id.toArg
+  mpd.runCommandOk "deleteid", id
 
 proc move*(mpd: MPDClient; range: uint32 | SongRange, to: uint32) =
-  mpd.runCommandOk "move", range.toArg, to.toArg
+  mpd.runCommandOk "move", range, to
 
 proc moveId*(mpd: MPDClient; id, to: uint32) =
-  mpd.runCommandOk "moveid", id.toArg, to.toArg
+  mpd.runCommandOk "moveid", id, to
 
 proc playlistFind*(mpd: MPDClient, tag: Tag, needle: string): seq[Song] =
-  if mpd.runCommandList("playlistfind", tag.toArg, needle):
+  if mpd.runCommandList("playlistfind", tag, needle):
     mpd.getStructList "file", getSong
 
 iterator playlistFind*(mpd: MPDClient, tag: Tag, needle: string): Song =
-  if mpd.runCommandList("playlistfind", tag.toArg, needle):
+  if mpd.runCommandList("playlistfind", tag, needle):
     mpd.iterateStructList "file", getSong
 
 proc playlistId*(mpd: MPDClient): seq[Song] =
@@ -153,7 +155,7 @@ iterator playlistId*(mpd: MPDClient):Song =
   mpd.iterateStructList "file", getSong
 
 proc playlistId*(mpd: MPDClient; id: uint32): Song =
-  mpd.runCommand "playlistid", id.toArg
+  mpd.runCommand "playlistid", id
   mpd.getSong
 
 proc playlistInfo*(mpd: MPDClient): seq[Song] =
@@ -165,31 +167,31 @@ iterator playlistInfo*(mpd: MPDClient): Song =
   mpd.iterateStructList "file", getSong
 
 proc playlistInfo*(mpd: MPDClient; pos: uint32): Song =
-  mpd.runCommand "playlistinfo", pos.toArg
+  mpd.runCommand "playlistinfo", pos
   mpd.getSong
 
 proc playlistInfo*(mpd: MPDClient; range: SongRange): seq[Song] =
-  mpd.runCommand "playlistinfo", range.toArg
+  mpd.runCommand "playlistinfo", range
   mpd.getStructList "file", getSong
 
 iterator playlistInfo*(mpd: MPDClient; range: SongRange): Song =
-  mpd.runCommand "playlistinfo", range.toArg
+  mpd.runCommand "playlistinfo", range
   mpd.iterateStructList "file", getSong
 
 proc playlistSearch*(mpd: MPDClient, tag: Tag, needle: string): seq[Song] =
-  if mpd.runCommandList("playlistsearch", tag.toArg, needle):
+  if mpd.runCommandList("playlistsearch", tag, needle):
     mpd.getStructList "file", getSong
 
 iterator playlistSearch*(mpd: MPDClient, tag: Tag, needle: string): Song =
-  if mpd.runCommandList("playlistsearch", tag.toArg, needle):
+  if mpd.runCommandList("playlistsearch", tag, needle):
     mpd.iterateStructList "file", getSong
 
 proc playlistChanges*(mpd: MPDClient, version: string, range: SongRange): seq[Song] =
-  mpd.runCommand "plchanges", version, range.toArg
+  mpd.runCommand "plchanges", version, range
   mpd.getStructList "file", getSong
 
 iterator playlistChanges*(mpd: MPDClient, version: string, range: SongRange): Song =
-  mpd.runCommand "plchanges", version, range.toArg
+  mpd.runCommand "plchanges", version, range
   mpd.iterateStructList "file", getSong
 
 proc playlistChanges*(mpd: MPDClient, version: string): seq[Song] =
@@ -201,11 +203,11 @@ iterator playlistChanges*(mpd: MPDClient, version: string): Song =
   mpd.iterateStructList "file", getSong
 
 proc playlistChangesPosId*(mpd: MPDClient, version: string, range: SongRange): seq[PosId] =
-  mpd.runCommand "plchangesposid", version, range.toArg
+  mpd.runCommand "plchangesposid", version, range
   mpd.getStructList "cpos", getPosId
 
 iterator playlistChangesPosId*(mpd: MPDClient, version: string, range: SongRange): PosId =
-  mpd.runCommand "plchangesposid", version, range.toArg
+  mpd.runCommand "plchangesposid", version, range
   mpd.iterateStructList "cpos", getPosId
 
 proc playlistChangesPosId*(mpd: MPDClient, version: string): seq[PosId] =
@@ -217,37 +219,37 @@ iterator playlistChangesPosId*(mpd: MPDClient, version: string): PosId =
   mpd.iterateStructList "cpos", getPosId
 
 proc prio*(mpd: MPDClient, prio: uint8, range: uint32 | SongRange) =
-  mpd.runCommandOk "prio", prio.toArg, range.toArg
+  mpd.runCommandOk "prio", prio, range
 
 proc prioId*(mpd: MPDClient, prio: uint8, id: uint32) =
-  mpd.runCommandOk "prioid", prio.toArg, id.toArg
+  mpd.runCommandOk "prioid", prio, id
 
 proc rangeIdRemove*(mpd: MPDClient, id: uint32) =
-  mpd.runCommandOk "rangeid", id.toArg, ":"
+  mpd.runCommandOk "rangeid", id, ":"
 
 proc rangeId*(mpd: MPDClient, id: uint32, range: TimeRange | HSlice[float, float]) =
-  mpd.runCommandOk "rangeid", id.toArg, range.toArg
+  mpd.runCommandOk "rangeid", id, range
 
 proc shuffle*(mpd: MPDClient, range: SongRange) =
-  mpd.runCommandOk "shuffle", range.toArg
+  mpd.runCommandOk "shuffle", range
 
 proc shuffle*(mpd: MPDClient) =
   mpd.runCommandOk "shuffle"
 
 proc swap*(mpd: MPDClient, pos1, pos2: uint32) =
-  mpd.runCommandOk "swap", pos1.toArg, pos2.toArg
+  mpd.runCommandOk "swap", pos1, pos2
 
 proc swapId*(mpd: MPDClient, pos1, pos2: uint32) =
-  mpd.runCommandOk "swapid", pos1.toArg, pos2.toArg
+  mpd.runCommandOk "swapid", pos1, pos2
 
 proc addTagId*(mpd: MPDClient, id: uint32, tag, value: string) =
-  mpd.runCommandOk "addtagid", id.toArg, tag, value
+  mpd.runCommandOk "addtagid", id, tag, value
 
 proc cleartagid*(mpd: MPDClient, id: uint32, tag: string) =
-  mpd.runCommandOk "cleartagid", id.toArg, tag
+  mpd.runCommandOk "cleartagid", id, tag
 
 proc cleartagid*(mpd: MPDClient, id: uint32) =
-  mpd.runCommandOk "cleartagid", id.toArg
+  mpd.runCommandOk "cleartagid", id
 
 # Stored playlists
 
@@ -276,46 +278,46 @@ iterator listPlaylists*(mpd: MPDClient): Playlist =
   mpd.iterateStructList "playlist", getPlaylist
 
 proc load*(mpd: MPDClient, playlist: string | Playlist, range: SongRange) =
-  mpd.runCommandOk "load", playlist.toArg, range.toArg
+  mpd.runCommandOk "load", playlist, range
 
 proc load*(mpd: MPDClient, playlist: string | Playlist) =
-  mpd.runCommandOk "load", playlist.toArg
+  mpd.runCommandOk "load", playlist
 
 proc playlistAdd*(mpd: MPDClient, playlist: string | Playlist, uri: string) =
-  mpd.runCommandOk "playlistadd", playlist.toArg, uri
+  mpd.runCommandOk "playlistadd", playlist, uri
 
 proc playlistClear*(mpd: MPDClient, playlist: string | Playlist) =
-  mpd.runCommandOk "playlistclear", playlist.toArg
+  mpd.runCommandOk "playlistclear", playlist
 
 proc playlistDelete*(mpd: MPDClient, playlist: string | Playlist, pos: uint32) =
-  mpd.runCommandOk "playlistdelete", playlist.toArg, pos.toArg
+  mpd.runCommandOk "playlistdelete", playlist, pos
 
 proc playlistMove*(mpd: MPDClient, playlist: string | Playlist, pos, to: uint32) =
-  mpd.runCommandOk "playlistmove", playlist.toArg, pos.toArg, to.toArg
+  mpd.runCommandOk "playlistmove", playlist, pos, to
 
 proc rename*(mpd: MPDClient, playlist: string | Playlist, to: string) =
-  mpd.runCommandOk "rename", playlist.toArg, to
+  mpd.runCommandOk "rename", playlist, to
 
 proc rm*(mpd: MPDClient, playlist: string | Playlist) =
-  mpd.runCommandOk "rm", playlist.toArg
+  mpd.runCommandOk "rm", playlist
 
 proc save*(mpd: MPDClient, playlist: string | Playlist) =
-  mpd.runCommandOk "save", playlist.toArg
+  mpd.runCommandOk "save", playlist
 
 # The music database
 
 proc albumart*(mpd: MPDClient, uri: string, offset = 0): tuple[size: uint32, data: seq[byte]] =
-  mpd.runCommand "albumart", uri, offset.toArg
+  mpd.runCommand "albumart", uri, offset
   result.size = mpd.getValue.parseUint32
   result.data = mpd.getBinary
   mpd.expectOk
 
 proc count*(mpd: MPDClient, filter: Filter): tuple[songs, playtime: int] =
-  mpd.runCommand "count", filter.toArg
+  mpd.runCommand "count", filter
   (mpd.getPair[1].parseInt, mpd.getPair[1].parseInt)
 
 proc countGrouped*(mpd: MPDClient, filter: Filter, group: Tag): seq[CountGroup] =
-  mpd.runCommand "count", filter.toArg, "group", group.toArg
+  mpd.runCommand "count", filter, "group", group
   for (key, val) in mpd:
     case key:
     of "songs": result[^1].songs = val.parseInt
@@ -323,7 +325,7 @@ proc countGrouped*(mpd: MPDClient, filter: Filter, group: Tag): seq[CountGroup] 
     else: result.add CountGroup(tag: group, name: val)
 
 iterator countGrouped*(mpd: MPDClient, filter: Filter, group: Tag): CountGroup =
-  mpd.runCommand "count", filter.toArg, "group", group.toArg
+  mpd.runCommand "count", filter, "group", group
   var res: CountGroup
   for (key, val) in mpd:
     case key:
@@ -340,20 +342,24 @@ proc getFingerprint*(mpd: MPDClient, uri: string): string =
   mpd.getValue
 
 template findCompose(cmd: string, filter: Filter, sort: SortOrder): untyped =
-  var args = @[filter.toArg]
+  var payload = cmd
+  payload.add ' '
+  payload.addArg filter
   if sort.tag != tagAny:
-    args.add "sort"
-    args.add sort.toArg
-  mpd.runCommand cmd, args
+    payload.add " sort "
+    payload.addArg sort
+  mpd.send payload
 
 template findCompose(cmd: string, filter: Filter, sort: SortOrder, window: SongRange): untyped =
-  var args = @[filter.toArg]
+  var payload = cmd
+  payload.add ' '
+  payload.addArg filter
   if sort.tag != tagAny:
-    args.add "sort"
-    args.add sort.toArg
-  args.add "window"
-  args.add window.toArg
-  mpd.runCommand cmd, args
+    payload.add " sort "
+    payload.addArg sort
+  payload.add " window "
+  payload.addArg window
+  mpd.send payload
 
 proc findAdd*(mpd: MPDClient, filter: Filter, sort = noSort) =
   ## Requires MPD >= 0.22
@@ -377,33 +383,41 @@ proc searchAdd*(mpd: MPDClient, filter: Filter, sort = noSort, window: SongRange
 
 proc searchAddPl*(mpd: MPDClient, name: string, filter: Filter, sort = noSort) =
   ## Requires MPD >= 0.22
-  var args = @[name, filter.toArg]
+  var cmd = "searchaddpl "
+  cmd.add name
+  cmd.add ' '
+  cmd.addArg filter
   if sort.tag != tagAny:
-    args.add "sort"
-    args.add sort.toArg
-  mpd.runCommandOk "searchaddpl", args
+    cmd.add " sort "
+    cmd.addArg sort
+  mpd.send cmd
+  mpd.expectOk
 
 proc searchAddPl*(mpd: MPDClient, name: string, filter: Filter, sort = noSort, window: SongRange) =
   ## Requires MPD >= 0.22
-  var args = @[name, filter.toArg]
+  var cmd = "searchaddpl "
+  cmd.add name
+  cmd.add ' '
+  cmd.addArg filter
   if sort.tag != tagAny:
-    args.add "sort"
-    args.add sort.toArg
-  args.add "window"
-  args.add window.toArg
-  mpd.runCommandOk "searchaddpl", args
+    cmd.add " sort "
+    cmd.addArg sort
+  cmd.add " window "
+  cmd.addArg window
+  mpd.send cmd
+  mpd.expectOk
 
 proc findAdd*(mpd: MPDClient, filter: Filter) =
   ## Requires MPD >= 0.21
-  mpd.runCommandOk "findadd", filter.toArg
+  mpd.runCommandOk "findadd", filter
 
 proc searchAdd*(mpd: MPDClient, filter: Filter) =
   ## Requires MPD >= 0.21
-  mpd.runCommandOk "searchadd", filter.toArg
+  mpd.runCommandOk "searchadd", filter
 
 proc searchAddPl*(mpd: MPDClient, name: string, filter: Filter) =
   ## Requires MPD >= 0.21
-  mpd.runCommandOk "searchaddpl", name, filter.toArg
+  mpd.runCommandOk "searchaddpl", name, filter
 
 proc find*(mpd: MPDClient, filter: Filter, sort = noSort): seq[Song] =
   ## Requires MPD >= 0.21
@@ -447,17 +461,17 @@ iterator search*(mpd: MPDClient, filter: Filter, sort = noSort, window: SongRang
 
 proc list*(mpd: MPDClient, tag: Tag, filter: Filter): seq[string] =
   ## Requires MPD >= 0.21
-  mpd.runCommand "list", tag.toArg, filter.toArg
+  mpd.runCommand "list", tag, filter
   mpd.getValues
 
 iterator list*(mpd: MPDClient, tag: Tag, filter: Filter): string =
   ## Requires MPD >= 0.21
-  mpd.runCommand "list", tag.toArg, filter.toArg
+  mpd.runCommand "list", tag, filter
   mpd.iterateValues
 
 proc listGrouped*(mpd: MPDClient, tag: Tag, filter: Filter, group: Tag): seq[(string, seq[string])] =
   ## Requires MPD >= 0.21
-  mpd.runCommand "list", tag.toArg, filter.toArg, "group", group.toArg
+  mpd.runCommand "list", tag, filter, "group", group
   for (key, val) in mpd:
     if key == $group:
       result.add (val, @[])
@@ -466,7 +480,7 @@ proc listGrouped*(mpd: MPDClient, tag: Tag, filter: Filter, group: Tag): seq[(st
 
 iterator listGrouped*(mpd: MPDClient, tag: Tag, filter: Filter, group: Tag): (string, seq[string]) =
   ## Requires MPD >= 0.21
-  mpd.runCommand "list", tag.toArg, filter.toArg, "group", group.toArg
+  mpd.runCommand "list", tag, filter, "group", group
   var res: (string, seq[string])
   for (key, val) in mpd:
     if key == $group:
@@ -558,7 +572,7 @@ iterator readComments*(mpd: MPDClient, uri: string): (string, string) =
 proc readPicture*(mpd: MPDClient, offset = 0):
     tuple[size: uint32, mimetype: string, data: seq[byte]] =
   ## Requires MPD >= 0.22
-  mpd.runCommand "readpicture", offset.toArg
+  mpd.runCommand "readpicture", offset
   result.size = mpd.getValue.parseUint32
   result.mimetype = mpd.getValue
   result.data = mpd.getBinary
@@ -637,11 +651,11 @@ iterator stickerFind*(mpd: MPDClient, uri, name: string): FileSticker =
   mpd.iterateStructList "file", getFileSticker
 
 proc stickerFindWithValue*(mpd: MPDClient, uri, name, value: string, operator = stOpEquals): seq[FileSticker] =
-  mpd.runCommand "sticker find song", uri, name, operator.toArg, value
+  mpd.runCommand "sticker find song", uri, name, operator, value
   mpd.getStructList "file", getFileSticker
 
 iterator stickerFindWithValue*(mpd: MPDClient, uri, name, value: string, operator = stOpEquals): FileSticker =
-  mpd.runCommand "sticker find song", uri, name, operator.toArg, value
+  mpd.runCommand "sticker find song", uri, name, operator, value
   mpd.iterateStructList "file", getFileSticker
 
 # Connection settings
@@ -661,10 +675,20 @@ iterator tagtypes*(mpd: MPDClient): string =
   mpd.iterateValues
 
 proc tagtypesDisable*(mpd: MPDClient, tags: varargs[Tag]) =
-  mpd.runCommandOk "tagtypes disable", tags.mapIt(it.toArg)
+  var cmd = "tagtypes disable"
+  for tag in tags:
+    cmd.add ' '
+    cmd.addArg tag
+  mpd.send cmd
+  mpd.expectOk
 
 proc tagtypesEnable*(mpd: MPDClient, tags: varargs[Tag]) =
-  mpd.runCommandOk "tagtypes enable", tags.mapIt(it.toArg)
+  var cmd = "tagtypes enable"
+  for tag in tags:
+    cmd.add ' '
+    cmd.addArg tag
+  mpd.send cmd
+  mpd.expectOk
 
 proc tagtypesClear*(mpd: MPDClient) =
   mpd.runCommandOk "tagtypes clear"
@@ -675,7 +699,7 @@ proc tagtypesAll*(mpd: MPDClient) =
 # Partition commands
 
 proc partition*(mpd: MPDClient, part: string | Partition) =
-  mpd.runCommandOk "partition", part.toArg
+  mpd.runCommandOk "partition", part
 
 proc listPartitions*(mpd: MPDClient): seq[Partition] =
   mpd.runCommand "listpartitions"
@@ -699,13 +723,13 @@ proc moveOutput*(mpd: MPDClient, name: string) =
 # Audio output devices
 
 proc disableOutput*(mpd: MPDClient, output: uint32 | Output) =
-  mpd.runCommand "disableoutput", output.toArg
+  mpd.runCommand "disableoutput", output
 
 proc enableOutput*(mpd: MPDClient, output: uint32 | Output) =
-  mpd.runCommand "enableoutput", output.toArg
+  mpd.runCommand "enableoutput", output
 
 proc toggleOutput*(mpd: MPDClient, output: uint32 | Output) =
-  mpd.runCommand "toggleoutput", output.toArg
+  mpd.runCommand "toggleoutput", output
 
 proc outputs*(mpd: MPDClient): seq[Output] =
   mpd.runCommand "outputs"
@@ -716,7 +740,7 @@ iterator outputs*(mpd: MPDClient): Output =
   mpd.iterateStructList "outputid", getOutput
 
 proc outputSet*(mpd: MPDClient, output: uint32 | Output, name, value: string) =
-  mpd.runCommandOk "outputset", output.toArg, name, value
+  mpd.runCommandOk "outputset", output, name, value
 
 template outputSwitch*(mpd: MPDClient, output: uint32, state: bool) =
   if state:

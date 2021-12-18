@@ -1,4 +1,4 @@
-import os, net, times, options, strtabs
+import os, net, times, options, strtabs, macros
 import strutils except parseBool
 from posix import Stat, stat, S_ISSOCK
 import ./parse, ./types
@@ -83,26 +83,51 @@ proc expectOk*(mpd: MPDClient) {.inline.} =
   if reply.kind == replyAck:
     raise newException(CatchableError, reply.ack)
 
-proc expectList(mpd: MPDClient): bool {.inline.} =
+proc expectList*(mpd: MPDClient): bool {.inline.} =
   let reply = mpd.readLine.parseReply
   if reply.kind == replyAck:
     raise newException(CatchableError, reply.ack)
   reply.kind == replyPair
 
-proc runCommand*(mpd: MPDClient; cmd: string, args: varargs[string]) =
-  var command = cmd
+proc send*(mpd: MPDClient, payload: string) =
+  mpd.socket.send payload
+
+proc composeCommand(cmd, args: NimNode): NimNode =
+  let name = genSym nskVar
+  result = newStmtList newVarStmt(name, cmd)
   for arg in args:
-    command &= " "
-    command &= arg.escape
-  mpd.socket.send command & "\x0a"
+    result.add quote do:
+      `name`.add ' '
+      `name`.addArg `arg`
+  result.add quote do:
+    `name`.add '\n'
+  result.add name
 
-proc runCommandOk*(mpd: MPDClient; cmd: string, args: varargs[string]) {.inline.} =
-  mpd.runCommand(cmd, args)
-  mpd.expectOk
+macro composeCommand*(cmd: string, args: varargs[typed]): untyped =
+  composeCommand cmd, args
 
-proc runCommandList*(mpd: MPDClient; cmd: string, args: varargs[string]): bool {.inline.} =
-  mpd.runCommand(cmd, args)
-  mpd.expectList
+macro runCommand*(mpd: MPDClient, cmd: string, args: varargs[typed]) =
+  newCall("send", mpd, composeCommand(cmd, args))
+
+macro runCommandOk*(mpd: MPDClient, cmd: string, args: varargs[typed]) =
+  result = newStmtList()
+  var instance = mpd
+  if mpd.kind == nnkCall:
+    instance = genSym(nskLet)
+    result.add newLetStmt(instance, mpd)
+  result.add(
+    newCall("send", instance, composeCommand(cmd, args)),
+    newCall("expectOk", instance))
+
+macro runCommandList*(mpd: MPDClient, cmd: string, args: varargs[typed]): bool =
+  result = newStmtList()
+  var instance = mpd
+  if mpd.kind == nnkCall:
+    instance = genSym(nskLet)
+    result.add newLetStmt(instance, mpd)
+  result.add(
+    newCall("send", instance, composeCommand(cmd, args)),
+    newCall("expectList", instance))
 
 proc getPair*(mpd: MPDClient): Pair =
   let reply = mpd.readLine.parseReply
