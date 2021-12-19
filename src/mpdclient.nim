@@ -1,4 +1,4 @@
-import std/[strutils, times, strtabs, options]
+import std/[times, strtabs, options]
 export options.get, options.isSome
 export strtabs.`[]`, strtabs.`$`, strtabs.getOrDefault, strtabs.contains
 
@@ -15,7 +15,7 @@ template iterateStructList(mpd: MPDClient; firstKey: string, t: typedesc): untyp
 
 template iterateValues(mpd: MPDClient): untyped =
   for value in mpd.values:
-    yield value
+    yield $value
 
 # Querying MPD status
 
@@ -322,32 +322,32 @@ proc albumart*(mpd: MPDClient, uri: string, offset = 0): tuple[size: uint32, dat
 
 proc count*(mpd: MPDClient, filter: Filter): tuple[songs, playtime: int] =
   mpd.runCommand "count", filter
-  (mpd.getPair[1].parseInt, mpd.getPair[1].parseInt)
+  (mpd.getPair[1].parseInt.int, mpd.getPair[1].parseInt.int)
 
 proc countGrouped*(mpd: MPDClient, filter: Filter, group: Tag): seq[CountGroup] =
   mpd.runCommand "count", filter, "group", group
   for (key, val) in mpd:
     case key:
-    of "songs": result[^1].songs = val.parseInt
-    of "playtime": result[^1].playtime = val.parseInt
-    else: result.add CountGroup(tag: group, name: val)
+    of "songs": result[^1].songs = val.parseInt.int
+    of "playtime": result[^1].playtime = val.parseInt.int
+    else: result.add CountGroup(tag: group, name: $val)
 
 iterator countGrouped*(mpd: MPDClient, filter: Filter, group: Tag): CountGroup =
   mpd.runCommand "count", filter, "group", group
   var res: CountGroup
   for (key, val) in mpd:
     case key:
-    of "songs": res.songs = val.parseInt
-    of "playtime": res.playtime = val.parseInt
+    of "songs": res.songs = val.parseInt.int
+    of "playtime": res.playtime = val.parseInt.int
     else:
       if res.songs > 0:
         yield res
-      res = CountGroup(tag: group, name: val)
+      res = CountGroup(tag: group, name: $val)
   yield res
 
 proc getFingerprint*(mpd: MPDClient, uri: string): string =
   mpd.runCommand "getfingerprint", uri
-  mpd.getValue
+  $mpd.getValue
 
 template findCompose(cmd: string, filter: Filter, sort: SortOrder): untyped =
   var payload = cmd
@@ -482,9 +482,9 @@ proc listGrouped*(mpd: MPDClient, tag: Tag, filter: Filter, group: Tag): seq[(st
   mpd.runCommand "list", tag, filter, "group", group
   for (key, val) in mpd:
     if key == $group:
-      result.add (val, @[])
+      result.add ($val, @[])
     else:
-      result[^1][1].add val
+      result[^1][1].add $val
 
 iterator listGrouped*(mpd: MPDClient, tag: Tag, filter: Filter, group: Tag): (string, seq[string]) =
   ## Requires MPD >= 0.21
@@ -494,9 +494,9 @@ iterator listGrouped*(mpd: MPDClient, tag: Tag, filter: Filter, group: Tag): (st
     if key == $group:
       if res[1].len > 0:
         yield res
-      res = (val, @[])
+      res = ($val, @[])
     else:
-      res[1].add val
+      res[1].add $val
   yield res
 
 proc listAll*(mpd: MPDClient, uri: string): seq[(InfoEntryKind, string)] =
@@ -504,9 +504,9 @@ proc listAll*(mpd: MPDClient, uri: string): seq[(InfoEntryKind, string)] =
   mpd.runCommand "listall", uri
   for (key, val) in mpd:
     case key:
-    of "directory": result.add (entryDirectory, val)
-    of "file": result.add (entryFile, val)
-    of "playlist": result.add (entryPlaylist, val)
+    of "directory": result.add (entryDirectory, $val)
+    of "file": result.add (entryFile, $val)
+    of "playlist": result.add (entryPlaylist, $val)
     else: discard
 
 iterator listAll*(mpd: MPDClient, uri: string): (InfoEntryKind, string) =
@@ -514,21 +514,21 @@ iterator listAll*(mpd: MPDClient, uri: string): (InfoEntryKind, string) =
   mpd.runCommand "listall", uri
   for (key, val) in mpd:
     case key:
-    of "directory": yield (entryDirectory, val)
-    of "file": yield (entryFile, val)
-    of "playlist": yield (entryPlaylist, val)
+    of "directory": yield (entryDirectory, $val)
+    of "file": yield (entryFile, $val)
+    of "playlist": yield (entryPlaylist, $val)
     else: discard
 
 template infoRoutine(mpd: MPDClient): untyped =
   for (key, val) in mpd:
     case key:
     of "directory":
-      result.add InfoEntry(kind: entryDirectory, name: val, tags: newStringTable())
+      result.add InfoEntry(kind: entryDirectory, name: $val, tags: newStringTable())
     of "file":
-      result.add InfoEntry(kind: entryFile, name: val, tags: newStringTable())
+      result.add InfoEntry(kind: entryFile, name: $val, tags: newStringTable())
     of "playlist":
-      result.add InfoEntry(kind: entryPlaylist, name: val, tags: newStringTable())
-    else: result[^1].tags[key] = val
+      result.add InfoEntry(kind: entryPlaylist, name: $val, tags: newStringTable())
+    else: result[^1].tags[$key] = $val
 
 template infoIterRoutine(mpd: MPDClient): untyped =
   var res: InfoEntry
@@ -537,20 +537,20 @@ template infoIterRoutine(mpd: MPDClient): untyped =
     of "directory":
       if res.name.len > 0: yield res
       res.kind = entryDirectory
-      res.name = val
+      res.name = $val
       res.tags = newStringTable()
     of "file":
       if res.name.len > 0: yield res
       res.kind = entryFile
-      res.name = val
+      res.name = $val
       res.tags = newStringTable()
     of "Playlist":
       if res.name.len > 0: yield res
       res.kind = entryPlaylist
-      res.name = val
+      res.name = $val
       res.tags = newStringTable()
     else:
-      res.tags[key] = val
+      res.tags[$key] = $val
   yield res
 
 proc listFiles*(mpd: MPDClient, uri: string): seq[InfoEntry] =
@@ -571,18 +571,18 @@ iterator listInfo*(mpd: MPDClient, uri: string): InfoEntry =
 
 proc readComments*(mpd: MPDClient, uri: string): seq[(string, string)] =
   mpd.runCommand "readcomments", uri
-  for pair in mpd: result.add pair
+  for (key, value) in mpd: result.add ($key, $value)
 
 iterator readComments*(mpd: MPDClient, uri: string): (string, string) =
   mpd.runCommand "readcomments", uri
-  for pair in mpd: yield pair
+  for (key, value) in mpd: yield ($key, $value)
 
 proc readPicture*(mpd: MPDClient, offset = 0):
     tuple[size: uint32, mimetype: string, data: seq[byte]] =
   ## Requires MPD >= 0.22
   mpd.runCommand "readpicture", offset
   result.size = mpd.getValue.parseUint32
-  result.mimetype = mpd.getValue
+  result.mimetype = $mpd.getValue
   result.data = mpd.getBinary
   mpd.expectOk
 

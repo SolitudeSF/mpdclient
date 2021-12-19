@@ -3,6 +3,9 @@ import strutils except parseBool
 from posix import Stat, stat, S_ISSOCK
 import ./parse, ./types
 
+{.experimental: "views".}
+{.experimental: "caseStmtMacros".}
+
 type
   MPDClient* = ref object
     host: string
@@ -17,18 +20,33 @@ type
     case kind: ReplyKind
     of replyOk: discard
     of replyAck: ack: string
-    of replyPair: key, value: string
+    of replyPair: key, value: openArray[char]
 
-  Pair = tuple[key, value: string]
+  Pair = tuple[key, value: openArray[char]]
 
-func parseReply(s: string): Reply =
-  if s == "OK" or s == "list_OK":
+func stripBounds(s: openArray[char], start = 0, finish = s.high): tuple[a, b: int] =
+  result.a = start
+  result.b = finish
+  for i in start..s.high:
+    if s[i] notin Whitespace:
+      result.a = i
+      break
+
+  for i in countdown(finish, result.a):
+    if s[i] notin Whitespace:
+      result.b = i
+      break
+
+func parseReply(s: openArray[char]): Reply =
+  result = if s == "OK" or s == "list_OK":
     Reply(kind: replyOk)
   elif s.startsWith "ACK ":
-    Reply(kind: replyAck, ack: s[4..^1])
+    Reply(kind: replyAck, ack: $s[4..s.high])
   else:
-    let idx = s.find ':'
-    Reply(kind: replyPair, key: s[0..<idx], value: s[idx + 1..^1].strip)
+    let
+      idx = s.find ':'
+      (a, b) = s.stripBounds(idx + 1)
+    Reply(kind: replyPair, key: s.toOpenArray(0, idx - 1), value: s.toOpenArray(a, b))
 
 proc connect(mpd: var MPDClient) =
   if mpd.host.startsWith '/':
@@ -136,7 +154,7 @@ proc getPair*(mpd: MPDClient): Pair =
   of replyAck:
     raise newException(CatchableError, reply.ack)
 
-proc getValue*(mpd: MPDClient): string =
+proc getValue*(mpd: MPDClient): openArray[char] =
   result = mpd.getPair.value
   mpd.expectOk
 
@@ -161,18 +179,28 @@ iterator items*(mpd: MPDClient): Pair =
     of replyAck:
       raise newException(CatchableError, reply.ack)
 
-iterator values*(mpd: MPDClient): string =
+iterator values*(mpd: MPDClient): openArray[char] =
   for (_, value) in mpd:
     yield value
 
 proc getValues*(mpd: MPDClient): seq[string] =
   for val in mpd.values:
-    result.add val
+    result.add $val
 
-func getComponent*(result: var Status, key, value: string) =
+macro `case`*(o: openArray[char]): untyped =
+  result = nnkIfStmt.newNimNode
+  let selector = o[0]
+  for i in 1..o.len - 2:
+    let
+      key = o[i][0]
+      body = o[i][1]
+    result.add nnkElifBranch.newTree(newCall("==", selector, key), body)
+  result.add o[^1]
+
+func getComponent*(result: var Status, key, value: openArray[char]) =
   case key
   of "partition":
-    result.partition = value
+    result.partition = $value
   of "volume":
     result.volume = value.parseInt.int8
   of "repeat":
@@ -226,13 +254,13 @@ func getComponent*(result: var Status, key, value: string) =
   of "updating_db":
     result.updatingDb = value.parseUint32.some
   of "error":
-    result.error = value.some
+    result.error = some $value
   of "xfade":
     result.crossfade = initDuration(seconds = value.parseInt)
   else:
-    raise newException(CatchableError, "Unknown struct key: " & key)
+    raise newException(CatchableError, "Unknown struct key: " & $key)
 
-func getComponent*(result: var Stats, key, value: string) =
+func getComponent*(result: var Stats, key, value: openArray[char]) =
   case key
   of "artists":
     result.artists = value.parseUint32
@@ -249,20 +277,20 @@ func getComponent*(result: var Stats, key, value: string) =
   of "db_update":
     result.dbUpdate = value.parseInt.fromUnix
   else:
-    raise newException(CatchableError, "Unknown struct key: " & key)
+    raise newException(CatchableError, "Unknown struct key: " & $key)
 
-proc getComponent*(result: var Song, key, value: string) =
+proc getComponent*(result: var Song, key, value: openArray[char]) =
   case key
   of "file":
-    result.file = value
+    result.file = $value
   of "Title":
-    result.title = value
+    result.title = $value
   of "Last-Modified":
-    result.lastModification = value.parse("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    result.lastModification = parse($value, "yyyy-MM-dd'T'HH:mm:ss'Z'")
   of "Artist":
-    result.artists.add value
+    result.artists.add $value
   of "Name":
-    result.name = value
+    result.name = $value
   of "Time":
     result.duration = initDuration(seconds = value.parseInt)
   of "duration":
@@ -287,101 +315,101 @@ proc getComponent*(result: var Song, key, value: string) =
     else:
       result.place = some(QueuePlace(priority: value.parseInt.uint8))
   else:
-    result.tags[key] = value
+    result.tags[$key] = $value
 
-proc getComponent*(result: var Playlist, key, value: string) =
+proc getComponent*(result: var Playlist, key, value: openArray[char]) =
   case key:
   of "playlist":
-    result.name = value
+    result.name = $value
   of "Last-Modified":
-    result.lastModification = value.parse("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    result.lastModification = parse($value, "yyyy-MM-dd'T'HH:mm:ss'Z'")
   else:
-    raise newException(CatchableError, "Unknown key: " & key)
+    raise newException(CatchableError, "Unknown key: " & $key)
 
-func getComponent*(result: var PosId, key, value: string) =
+func getComponent*(result: var PosId, key, value: openArray[char]) =
   case key:
   of "cpos":
     result.position = value.parseUint32
   of "Id":
     result.id = value.parseUint32
   else:
-    raise newException(CatchableError, "Unknown key: " & key)
+    raise newException(CatchableError, "Unknown key: " & $key)
 
-func getComponent*(result: var Mount, key, value: string) =
+func getComponent*(result: var Mount, key, value: openArray[char]) =
   case key:
   of "mount":
-    result.name = value
+    result.name = $value
   of "storage":
-    result.storage = value
+    result.storage = $value
   else:
-    raise newException(CatchableError, "Unknown key: " & key)
+    raise newException(CatchableError, "Unknown key: " & $key)
 
-func getComponent*(result: var Sticker, key, value: string) =
+func getComponent*(result: var Sticker, key, value: openArray[char]) =
   case key:
   of "sticker":
     let idx = value.find '='
-    result.name = value[0..<idx]
-    result.value = value[idx + 1..^1]
+    result.name = $value[0..<idx]
+    result.value = $value[idx + 1..^1]
   else:
-    raise newException(CatchableError, "Unknown key: " & key)
+    raise newException(CatchableError, "Unknown key: " & $key)
 
-func getComponent*(result: var FileSticker, key, value: string) =
+func getComponent*(result: var FileSticker, key, value: openArray[char]) =
   case key:
   of "file":
-    result.uri = value
+    result.uri = $value
   of "sticker":
     let idx = value.find '='
-    result.sticker.name = value[0..<idx]
-    result.sticker.value = value[idx + 1..^1]
+    result.sticker.name = $value[0..<idx]
+    result.sticker.value = $value[idx + 1..^1]
   else:
-    raise newException(CatchableError, "Unknown key: " & key)
+    raise newException(CatchableError, "Unknown key: " & $key)
 
-func getComponent*(result: var Partition, key, value: string) =
+func getComponent*(result: var Partition, key, value: openArray[char]) =
   case key:
   of "partition":
-    result.name = value
+    result.name = $value
   else:
-    result.tags[key] = value
+    result.tags[$key] = $value
 
-func getComponent*(result: var Output, key, value: string) =
+func getComponent*(result: var Output, key, value: openArray[char]) =
   case key:
   of "outputid":
     result.id = value.parseUint32
   of "outputname":
-    result.name = value
+    result.name = $value
   of "plugin":
-    result.plugin = value
+    result.plugin = $value
   of "outputenabled":
     result.enabled = value.parseBool
   else:
-    raise newException(CatchableError, "Unknown key: " & key)
+    raise newException(CatchableError, "Unknown key: " & $key)
 
-func getComponent*(result: var Config, key, value: string) =
+func getComponent*(result: var Config, key, value: openArray[char]) =
   case key:
   of "music_directory":
-    result.musicDirectory = value
+    result.musicDirectory = $value
   else:
-    raise newException(CatchableError, "Unknown key: " & key)
+    raise newException(CatchableError, "Unknown key: " & $key)
 
-func getComponent*(result: var Decoder, key, value: string) =
+func getComponent*(result: var Decoder, key, value: openArray[char]) =
   case key:
   of "plugin":
-    result.plugin = value
+    result.plugin = $value
   of "suffix":
-    result.suffixes.add value
+    result.suffixes.add $value
   of "mime_type":
-    result.mimeTypes.add value
+    result.mimeTypes.add $value
   else:
-    raise newException(CatchableError, "Unknown key: " & key)
+    raise newException(CatchableError, "Unknown key: " & $key)
 
-func getComponent*(result: var Message, key, value: string) =
+func getComponent*(result: var Message, key, value: openArray[char]) =
   case key:
   of "channel":
-    result.channel = value
+    result.channel = $value
   of "message":
-    result.message = value
+    result.message = $value
   else:
-    raise newException(CatchableError, "Unknown key: " & key)
+    raise newException(CatchableError, "Unknown key: " & $key)
 
 proc get*[T](mpd: MPDClient, result: var T) =
   when T is Song:
