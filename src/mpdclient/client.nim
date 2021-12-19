@@ -409,7 +409,3 @@ iterator structs*[T](mpd: MPDClient; firstKey: string, t: typedesc[T]): T =
         first = false
     res.getComponent key, value
   yield res
-
-proc getStructList*[T](mpd: MPDClient; firstKey: string, result: var seq[T]) =
-  for struct in mpd.structs(firstKey, T):
-    result.add struct
