@@ -9,6 +9,14 @@ import ./mpdclient/[types, args, parse, client, filters]
 export types, filters
 export newMPDClient
 
+template iterateStructList(mpd: MPDClient; firstKey: string, t: typedesc): untyped =
+  for struct in mpd.structs(firstKey, t):
+    yield struct
+
+template iterateValues(mpd: MPDClient): untyped =
+  for value in mpd.values:
+    yield value
+
 # Querying MPD status
 
 proc clearError*(mpd: MPDClient) =
@@ -16,7 +24,7 @@ proc clearError*(mpd: MPDClient) =
 
 proc currentSong*(mpd: MPDClient): Option[Song] =
   mpd.runCommand "currentsong"
-  let song = mpd.getSong
+  let song = mpd.get Song
   if song.place.isSome:
     result = some(song)
 
@@ -30,11 +38,11 @@ proc idle*(mpd: MPDClient): SubsystemKind =
 
 proc status*(mpd: MPDClient): Status =
   mpd.runCommand "status"
-  mpd.getStatus
+  mpd.get result
 
 proc stats*(mpd: MPDClient): Stats =
   mpd.runCommand "stats"
-  mpd.getStats
+  mpd.get result
 
 # Playback options
 
@@ -140,83 +148,83 @@ proc moveId*(mpd: MPDClient; id, to: uint32) =
 
 proc playlistFind*(mpd: MPDClient, tag: Tag, needle: string): seq[Song] =
   if mpd.runCommandList("playlistfind", tag, needle):
-    mpd.getStructList "file", getSong
+    mpd.getStructList "file", result
 
 iterator playlistFind*(mpd: MPDClient, tag: Tag, needle: string): Song =
   if mpd.runCommandList("playlistfind", tag, needle):
-    mpd.iterateStructList "file", getSong
+    mpd.iterateStructList "file", Song
 
 proc playlistId*(mpd: MPDClient): seq[Song] =
   mpd.runCommand "playlistid"
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator playlistId*(mpd: MPDClient):Song =
   mpd.runCommand "playlistid"
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc playlistId*(mpd: MPDClient; id: uint32): Song =
   mpd.runCommand "playlistid", id
-  mpd.getSong
+  mpd.get result
 
 proc playlistInfo*(mpd: MPDClient): seq[Song] =
   mpd.runCommand "playlistinfo"
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator playlistInfo*(mpd: MPDClient): Song =
   mpd.runCommand "playlistinfo"
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc playlistInfo*(mpd: MPDClient; pos: uint32): Song =
   mpd.runCommand "playlistinfo", pos
-  mpd.getSong
+  mpd.get result
 
 proc playlistInfo*(mpd: MPDClient; range: SongRange): seq[Song] =
   mpd.runCommand "playlistinfo", range
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator playlistInfo*(mpd: MPDClient; range: SongRange): Song =
   mpd.runCommand "playlistinfo", range
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc playlistSearch*(mpd: MPDClient, tag: Tag, needle: string): seq[Song] =
   if mpd.runCommandList("playlistsearch", tag, needle):
-    mpd.getStructList "file", getSong
+    mpd.getStructList "file", result
 
 iterator playlistSearch*(mpd: MPDClient, tag: Tag, needle: string): Song =
   if mpd.runCommandList("playlistsearch", tag, needle):
-    mpd.iterateStructList "file", getSong
+    mpd.iterateStructList "file", Song
 
 proc playlistChanges*(mpd: MPDClient, version: string, range: SongRange): seq[Song] =
   mpd.runCommand "plchanges", version, range
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator playlistChanges*(mpd: MPDClient, version: string, range: SongRange): Song =
   mpd.runCommand "plchanges", version, range
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc playlistChanges*(mpd: MPDClient, version: string): seq[Song] =
   mpd.runCommand "plchanges", version
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator playlistChanges*(mpd: MPDClient, version: string): Song =
   mpd.runCommand "plchanges", version
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc playlistChangesPosId*(mpd: MPDClient, version: string, range: SongRange): seq[PosId] =
   mpd.runCommand "plchangesposid", version, range
-  mpd.getStructList "cpos", getPosId
+  mpd.getStructList "cpos", result
 
 iterator playlistChangesPosId*(mpd: MPDClient, version: string, range: SongRange): PosId =
   mpd.runCommand "plchangesposid", version, range
-  mpd.iterateStructList "cpos", getPosId
+  mpd.iterateStructList "cpos", PosId
 
 proc playlistChangesPosId*(mpd: MPDClient, version: string): seq[PosId] =
   mpd.runCommand "plchangesposid", version
-  mpd.getStructList "cpos", getPosId
+  mpd.getStructList "cpos", result
 
 iterator playlistChangesPosId*(mpd: MPDClient, version: string): PosId =
   mpd.runCommand "plchangesposid", version
-  mpd.iterateStructList "cpos", getPosId
+  mpd.iterateStructList "cpos", PosId
 
 proc prio*(mpd: MPDClient, prio: uint8, range: uint32 | SongRange) =
   mpd.runCommandOk "prio", prio, range
@@ -255,27 +263,27 @@ proc cleartagid*(mpd: MPDClient, id: uint32) =
 
 proc listPlaylist*(mpd: MPDClient, name: string): seq[Song] =
   mpd.runCommand "listplaylist", name
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator listPlaylist*(mpd: MPDClient, name: string): Song =
   mpd.runCommand "listplaylist", name
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc listPlaylistInfo*(mpd: MPDClient, name: string): seq[Song] =
   mpd.runCommand "listplaylistinfo", name
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator listPlaylistInfo*(mpd: MPDClient, name: string): Song =
   mpd.runCommand "listplaylistinfo", name
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc listPlaylists*(mpd: MPDClient): seq[Playlist] =
   mpd.runCommand "listplaylists"
-  mpd.getStructList "playlist", getPlaylist
+  mpd.getStructList "playlist", result
 
 iterator listPlaylists*(mpd: MPDClient): Playlist =
   mpd.runCommand "listplaylists"
-  mpd.iterateStructList "playlist", getPlaylist
+  mpd.iterateStructList "playlist", Playlist
 
 proc load*(mpd: MPDClient, playlist: string | Playlist, range: SongRange) =
   mpd.runCommandOk "load", playlist, range
@@ -422,42 +430,42 @@ proc searchAddPl*(mpd: MPDClient, name: string, filter: Filter) =
 proc find*(mpd: MPDClient, filter: Filter, sort = noSort): seq[Song] =
   ## Requires MPD >= 0.21
   findCompose "find", filter, sort
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator find*(mpd: MPDClient, filter: Filter, sort = noSort): Song =
   ## Requires MPD >= 0.21
   findCompose "find", filter, sort
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc find*(mpd: MPDClient, filter: Filter, sort = noSort, window: SongRange): seq[Song] =
   ## Requires MPD >= 0.21
   findCompose "find", filter, sort, window
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator find*(mpd: MPDClient, filter: Filter, sort = noSort, window: SongRange): Song =
   ## Requires MPD >= 0.21
   findCompose "find", filter, sort, window
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc search*(mpd: MPDClient, filter: Filter, sort = noSort): seq[Song] =
   ## Requires MPD >= 0.21
   findCompose "search", filter, sort
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator search*(mpd: MPDClient, filter: Filter, sort = noSort): Song =
   ## Requires MPD >= 0.21
   findCompose "search", filter, sort
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc search*(mpd: MPDClient, filter: Filter, sort = noSort, window: SongRange): seq[Song] =
   ## Requires MPD >= 0.21
   findCompose "search", filter, sort, window
-  mpd.getStructList "file", getSong
+  mpd.getStructList "file", result
 
 iterator search*(mpd: MPDClient, filter: Filter, sort = noSort, window: SongRange): Song =
   ## Requires MPD >= 0.21
   findCompose "search", filter, sort, window
-  mpd.iterateStructList "file", getSong
+  mpd.iterateStructList "file", Song
 
 proc list*(mpd: MPDClient, tag: Tag, filter: Filter): seq[string] =
   ## Requires MPD >= 0.21
@@ -605,25 +613,25 @@ proc unmount*(mpd: MPDClient, path: string) =
 
 proc listMounts*(mpd: MPDClient): seq[Mount] =
   mpd.runCommand "listmounts"
-  mpd.getStructList "mount", getMount
+  mpd.getStructList "mount", result
 
 iterator listMounts*(mpd: MPDClient): Mount =
   mpd.runCommand "listmounts"
-  mpd.iterateStructList "mount", getMount
+  mpd.iterateStructList "mount", Mount
 
 proc listNeighbors*(mpd: MPDClient): seq[Neighbor] =
   mpd.runCommand "listneighbors"
-  mpd.getStructList "neighbor", getMount
+  mpd.getStructList "neighbor", result
 
 iterator listNeighbors*(mpd: MPDClient): Neighbor =
   mpd.runCommand "listneighbors"
-  mpd.iterateStructList "neighbor", getMount
+  mpd.iterateStructList "neighbor", Mount
 
 # Stickers
 
 proc stickerGet*(mpd: MPDClient, uri, name: string): Sticker =
   mpd.runCommand "sticker get song", uri, name
-  mpd.getSticker
+  mpd.get result
 
 proc stickerSet*(mpd: MPDClient, uri, name, value: string) =
   mpd.runCommandOk "sticker set song", uri, name, value
@@ -636,27 +644,27 @@ proc stickerDeleteAll*(mpd: MPDClient, uri: string) =
 
 proc stickerList*(mpd: MPDClient, uri: string): seq[Sticker] =
   mpd.runCommand "sticker list song", uri
-  mpd.getStructList "sticker", getSticker
+  mpd.getStructList "sticker", result
 
 iterator stickerList*(mpd: MPDClient, uri: string): Sticker =
   mpd.runCommand "sticker list song", uri
-  mpd.iterateStructList "sticker", getSticker
+  mpd.iterateStructList "sticker", Sticker
 
 proc stickerFind*(mpd: MPDClient, uri, name: string): seq[FileSticker] =
   mpd.runCommand "sticker find song", uri, name
-  mpd.getStructList "file", getFileSticker
+  mpd.getStructList "file", result
 
 iterator stickerFind*(mpd: MPDClient, uri, name: string): FileSticker =
   mpd.runCommand "sticker find song", uri, name
-  mpd.iterateStructList "file", getFileSticker
+  mpd.iterateStructList "file", FileSticker
 
 proc stickerFindWithValue*(mpd: MPDClient, uri, name, value: string, operator = stOpEquals): seq[FileSticker] =
   mpd.runCommand "sticker find song", uri, name, operator, value
-  mpd.getStructList "file", getFileSticker
+  mpd.getStructList "file", result
 
 iterator stickerFindWithValue*(mpd: MPDClient, uri, name, value: string, operator = stOpEquals): FileSticker =
   mpd.runCommand "sticker find song", uri, name, operator, value
-  mpd.iterateStructList "file", getFileSticker
+  mpd.iterateStructList "file", FileSticker
 
 # Connection settings
 
@@ -703,11 +711,11 @@ proc partition*(mpd: MPDClient, part: string | Partition) =
 
 proc listPartitions*(mpd: MPDClient): seq[Partition] =
   mpd.runCommand "listpartitions"
-  mpd.getStructList "partition", getPartition
+  mpd.getStructList "partition", result
 
 iterator listPartitions*(mpd: MPDClient): Partition =
   mpd.runCommand "listpartitions"
-  mpd.iterateStructList "partition", getPartition
+  mpd.iterateStructList "partition", Partition
 
 proc newPartition*(mpd: MPDClient, name: string) =
   mpd.runCommandOk "newpartition", name
@@ -733,11 +741,11 @@ proc toggleOutput*(mpd: MPDClient, output: uint32 | Output) =
 
 proc outputs*(mpd: MPDClient): seq[Output] =
   mpd.runCommand "outputs"
-  mpd.getStructList "outputid", getOutput
+  mpd.getStructList "outputid", result
 
 iterator outputs*(mpd: MPDClient): Output =
   mpd.runCommand "outputs"
-  mpd.iterateStructList "outputid", getOutput
+  mpd.iterateStructList "outputid", Output
 
 proc outputSet*(mpd: MPDClient, output: uint32 | Output, name, value: string) =
   mpd.runCommandOk "outputset", output, name, value
@@ -758,7 +766,7 @@ template switch*(mpd: MPDClient, output: Output, state: bool) =
 
 proc config*(mpd: MPDClient): Config =
   mpd.runCommand "config"
-  mpd.getConfig
+  mpd.get result
 
 proc commands*(mpd: MPDClient): seq[string] =
   mpd.runCommand "commands"
@@ -786,11 +794,11 @@ iterator urlHandlers*(mpd: MPDClient): string =
 
 proc decoders*(mpd: MPDClient): seq[Decoder] =
   mpd.runCommand "decoders"
-  mpd.getStructList "plugin", getDecoder
+  mpd.getStructList "plugin", result
 
 iterator decoders*(mpd: MPDClient): Decoder =
   mpd.runCommand "decoders"
-  mpd.iterateStructList "plugin", getDecoder
+  mpd.iterateStructList "plugin", Decoder
 
 # Client to client
 
@@ -810,11 +818,11 @@ iterator channels*(mpd: MPDClient): string =
 
 proc readMessages*(mpd: MPDClient): seq[Message] =
   mpd.runCommand "readmessages"
-  mpd.getStructList "channel", getMessage
+  mpd.getStructList "channel", result
 
 iterator readMessages*(mpd: MPDClient): Message =
   mpd.runCommand "readmessages"
-  mpd.iterateStructList "channel", getMessage
+  mpd.iterateStructList "channel", Message
 
 proc sendMessage*(mpd: MPDClient, channel, message: string) =
   mpd.runCommandOk "sendmessage", channel, message

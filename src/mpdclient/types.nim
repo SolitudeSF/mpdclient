@@ -168,4 +168,3 @@ proc `$`*(a: AudioFormat): string = $a.rate & ":" & $a.bitDepth & ":" & $a.chann
 
 func sortBy*(tag: Tag, descending = false): SortOrder =
   SortOrder(tag: tag, descending: descending)
-
