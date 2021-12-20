@@ -69,8 +69,6 @@ proc getVol*(mpd: MPDClient): int8 =
   mpd.runCommand "getvol"
   mpd.getValue.parseInt.int8
 
-template volume*(mpd, val) = mpd.setVol val
-
 proc mixRampDb*(mpd: MPDClient; val: float32) =
   mpd.runCommandOk "mixrampdb", val
 
@@ -124,14 +122,14 @@ proc seekCur*(mpd: MPDClient; dur: Duration | float) =
 proc add*(mpd: MPDClient; uri: string) =
   mpd.runCommandOk "add", uri
 
-proc add*(mpd: MPDClient; uri: string, pos: int) =
+proc add*(mpd: MPDClient; uri: string, pos: int | Relative) =
   mpd.runCommandOk "add", uri, pos
 
 proc addId*(mpd: MPDClient; uri: string): uint32 =
   mpd.runCommand "addid", uri
   mpd.getValue.parseUint32
 
-proc addId*(mpd: MPDClient; uri: string, pos: uint32): uint32 =
+proc addId*(mpd: MPDClient; uri: string, pos: uint32 | Relative): uint32 =
   mpd.runCommand "addid", uri, pos
   mpd.getValue.parseUint32
 
@@ -286,10 +284,13 @@ proc load*(mpd: MPDClient, playlist: string | Playlist) =
 proc playlistAdd*(mpd: MPDClient, playlist: string | Playlist, uri: string) =
   mpd.runCommandOk "playlistadd", playlist, uri
 
+proc playlistAdd*(mpd: MPDClient, playlist: string | Playlist, uri: string, pos: uint32) =
+  mpd.runCommandOk "playlistadd", playlist, uri, pos
+
 proc playlistClear*(mpd: MPDClient, playlist: string | Playlist) =
   mpd.runCommandOk "playlistclear", playlist
 
-proc playlistDelete*(mpd: MPDClient, playlist: string | Playlist, pos: uint32) =
+proc playlistDelete*(mpd: MPDClient, playlist: string | Playlist, pos: uint32 | SongRange) =
   mpd.runCommandOk "playlistdelete", playlist, pos
 
 proc playlistMove*(mpd: MPDClient, playlist: string | Playlist, pos, to: uint32) =
@@ -361,6 +362,22 @@ template findCompose(cmd: string, filter: Filter, sort: SortOrder, window: SongR
   payload.addArg window
   mpd.send payload
 
+template findCompose(cmd: string, filter: Filter, sort: SortOrder, window: Option[SongRange],
+  pos): untyped =
+  var payload = cmd
+  payload.add ' '
+  payload.addArg filter
+  if sort.tag != tagAny:
+    payload.add " sort "
+    payload.addArg sort
+  if window.isSome:
+    payload.add " window "
+    payload.addArg get window
+  if pos.isSome:
+    payload.add " position "
+    payload.addArg pos.get
+  mpd.send payload
+
 proc findAdd*(mpd: MPDClient, filter: Filter, sort = noSort) =
   ## Requires MPD >= 0.22
   findCompose "findadd", filter, sort
@@ -371,6 +388,15 @@ proc findAdd*(mpd: MPDClient, filter: Filter, sort = noSort, window: SongRange) 
   findCompose "findadd", filter, sort, window
   mpd.expectOk
 
+proc findAdd*[T: uint32 or Relative](mpd: MPDClient, filter: Filter, sort = noSort, window = none SongRange,
+  pos = none T) =
+  findCompose "findadd", filter, sort, window, pos
+  mpd.expectOk
+
+proc searchAdd*(mpd: MPDClient, filter: Filter) =
+  ## Requires MPD >= 0.21
+  mpd.runCommandOk "searchadd", filter
+
 proc searchAdd*(mpd: MPDClient, filter: Filter, sort = noSort) =
   ## Requires MPD >= 0.22
   findCompose "searchadd", filter, sort
@@ -380,6 +406,15 @@ proc searchAdd*(mpd: MPDClient, filter: Filter, sort = noSort, window: SongRange
   ## Requires MPD >= 0.22
   findCompose "searchadd", filter, sort, window
   mpd.expectOk
+
+proc searchAdd*[T: uint32 or Relative](mpd: MPDClient, filter: Filter, sort = noSort, window = none SongRange,
+  pos = none T) =
+  findCompose "searchadd", filter, sort, window, pos
+  mpd.expectOk
+
+proc searchAddPl*(mpd: MPDClient, name: string, filter: Filter) =
+  ## Requires MPD >= 0.21
+  mpd.runCommandOk "searchaddpl", name, filter
 
 proc searchAddPl*(mpd: MPDClient, name: string, filter: Filter, sort = noSort) =
   ## Requires MPD >= 0.22
@@ -410,14 +445,6 @@ proc searchAddPl*(mpd: MPDClient, name: string, filter: Filter, sort = noSort, w
 proc findAdd*(mpd: MPDClient, filter: Filter) =
   ## Requires MPD >= 0.21
   mpd.runCommandOk "findadd", filter
-
-proc searchAdd*(mpd: MPDClient, filter: Filter) =
-  ## Requires MPD >= 0.21
-  mpd.runCommandOk "searchadd", filter
-
-proc searchAddPl*(mpd: MPDClient, name: string, filter: Filter) =
-  ## Requires MPD >= 0.21
-  mpd.runCommandOk "searchaddpl", name, filter
 
 iterator find*(mpd: MPDClient, filter: Filter, sort = noSort): Song =
   ## Requires MPD >= 0.21

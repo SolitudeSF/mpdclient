@@ -155,6 +155,13 @@ type
   Message* = object
     channel*, message*: string
 
+  RelativeDirection* = enum
+    rdBefore, rdAfter
+
+  Relative* = object
+    value*: int
+    dir*: RelativeDirection
+
 const noSort* = SortOrder(tag: tagAny)
 
 proc `$`*(b: BitDepth): string =
@@ -168,3 +175,6 @@ proc `$`*(a: AudioFormat): string = $a.rate & ":" & $a.bitDepth & ":" & $a.chann
 
 func sortBy*(tag: Tag, descending = false): SortOrder =
   SortOrder(tag: tag, descending: descending)
+
+func relative*(value: int, dir = rdAfter): Relative =
+  Relative(value: value, dir: dir)

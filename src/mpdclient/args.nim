@@ -1,6 +1,12 @@
 import times, options, strutils
 import ./types
 
+func addArg*(result: var string, arg: Relative) {.inline.} =
+  result.add case arg.dir
+    of rdBefore: '-'
+    of rdAfter: '+'
+  result.addInt arg.value
+
 func addArg*(result: var string, arg: string) {.inline.} =
   result.add escape arg
 
