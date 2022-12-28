@@ -104,7 +104,7 @@ macro composeCommand*(cmd: string, args: varargs[typed]): untyped =
   composeCommand cmd, args
 
 macro runCommand*(mpd: MPDClient, cmd: string, args: varargs[typed]) =
-  newCall("send", mpd, composeCommand(cmd, args))
+  result = newCall("send", mpd, composeCommand(cmd, args))
 
 macro runCommandOk*(mpd: MPDClient, cmd: string, args: varargs[typed]) =
   result = newStmtList()

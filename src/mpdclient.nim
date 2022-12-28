@@ -7,7 +7,7 @@ export strtabs.`[]`, strtabs.`$`, strtabs.getOrDefault, strtabs.contains
 
 import ./mpdclient/[types, args, parse, client, filters]
 export types, filters
-export newMPDClient
+export newMPDClient, MPDClient
 
 template iterateStructList(mpd: MPDClient; firstKey: string, t: typedesc): untyped =
   for struct in mpd.structs(firstKey, t):
@@ -32,7 +32,7 @@ proc currentSong*(mpd: MPDClient): Option[Song] =
   if song.place.isSome:
     result = some(song)
 
-proc idle*(mpd: MPDClient, subsystem: string | SubsystemKind): SubsystemKind =
+proc idle*(mpd: MPDClient, subsystem: SubsystemKind): SubsystemKind =
   mpd.runCommand "idle", subsystem
   mpd.getValue.parseSubsystem
 

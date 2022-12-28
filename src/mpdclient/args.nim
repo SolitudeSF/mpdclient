@@ -57,5 +57,5 @@ func addArg*(result: var string, arg: SomeFloat) {.inline.} =
 func addArg*(result: var string, arg: SomeInteger | range) {.inline.} =
   result.addInt arg
 
-func addArg*(result: var string, arg: Tag | ReplayGainMode | StickerOperator) {.inline.} =
+func addArg*(result: var string, arg: Tag | ReplayGainMode | StickerOperator | SubsystemKind) {.inline.} =
   result.add $arg

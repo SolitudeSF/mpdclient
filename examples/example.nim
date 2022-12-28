@@ -36,7 +36,6 @@ if song.isSome:
   echo "title: ", song.title
   echo "track: ", song.tags[$tagTrack]
   echo "name: ", song.name
-  echo "date: ", song.tags[$tagDate]
 
   echo "time: ", song.duration.inSeconds
   echo "pos: ", song.place.get.pos
@@ -44,3 +43,7 @@ if song.isSome:
 for playlist in mpd.listPlaylists:
   echo "playlist: ", playlist.name
 
+
+let songs = mpd.playlistInfo
+for song in songs:
+  echo song
