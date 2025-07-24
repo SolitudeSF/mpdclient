@@ -62,7 +62,7 @@ type
     mixrampdb*: float32
     audio*: AudioFormat
     updatingDb*: Option[uint32]
-    error*: Option[string]
+    error*, lastLoadedPlaylist*: Option[string]
 
   Tag* = enum
     tagAny = "any"

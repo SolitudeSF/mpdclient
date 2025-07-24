@@ -229,6 +229,9 @@ func getComponent*(result: var Status, key, value: string) =
     result.error = value.some
   of "xfade":
     result.crossfade = initDuration(seconds = value.parseInt)
+  of "lastloadedplaylist":
+    if value.len != 0:
+      result.lastLoadedPlaylist = some(value)
   else:
     raise newException(CatchableError, "Unknown struct key: " & key)
 
